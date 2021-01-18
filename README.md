@@ -132,6 +132,7 @@ Test if you've successfully installed the package on your TCLLIBPATH:
 
 ```tcl
 % package require act_http
+0.1
 %
 ```
 
@@ -173,7 +174,6 @@ Result:
 ```sh
 PS E:\> bombardier-windows-amd64.exe http://127.0.0.1:8080
 Bombarding http://127.0.0.1:8080 for 10s using 125 connection(s)
-[===================================================================================================================================] 10s
 Done!
 Statistics        Avg      Stdev        Max
   Reqs/sec    164035.38    9240.09  190945.90
@@ -204,7 +204,6 @@ app.listen(port, () => {
 ```sh
 PS E:\> bombardier-windows-amd64.exe http://127.0.0.1:3000 -l
 Bombarding http://127.0.0.1:3000 for 10s using 125 connection(s)
-[===================================================================================================================================] 10s
 Done!
 Statistics        Avg      Stdev        Max
   Reqs/sec      5553.01     773.61    6156.96
@@ -242,7 +241,6 @@ server.listen(port, hostname, () => {
 ```sh
 PS E:\> bombardier-windows-amd64.exe http://127.0.0.1:3000 -l
 Bombarding http://127.0.0.1:3000 for 10s using 125 connection(s)
-[===================================================================================================================================] 10s
 Done!
 Statistics        Avg      Stdev        Max
   Reqs/sec     17463.05    2311.83   19928.00
