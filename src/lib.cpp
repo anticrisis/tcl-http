@@ -7,6 +7,7 @@
 #include <memory>
 #include <optional>
 #include <tcl.h>
+#include <thread>
 #include <vector>
 
 // need a macro for compile-time string concatenation
@@ -46,7 +47,7 @@ static constexpr auto thePackageVersion  = "0.1";
 //        list 200 "hello" "text/plain" {Set-Cookie foo X-Other-Header bar}
 //    }
 //
-struct config
+struct config_t
 {
   bool   valid{ false };
   TclObj options{};
@@ -67,7 +68,7 @@ struct config
 };
 
 void
-config::init()
+config_t::init()
 {
   // call after Tcl_InitStubs
   auto empty_string = [] {
@@ -92,7 +93,7 @@ config::init()
 struct tcl_handler final : public http_tcl::thread_safe_handler<tcl_handler>
 {
   Tcl_Interp* interp_;
-  config      config_;
+  config_t    config_;
 
   void
   set_target(std::string_view target)

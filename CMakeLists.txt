@@ -12,6 +12,9 @@ project(tcl_http
   LANGUAGES CXX)
 
 set(BASE_INSTALL_DIR ${CMAKE_SOURCE_DIR}/install)
+if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+    set(CMAKE_INSTALL_PREFIX "${BASE_INSTALL_DIR}" CACHE PATH "..." FORCE)
+endif()
 
 add_library(http_tcl SHARED
     "include/http_tcl/http_tcl.h"
@@ -24,18 +27,27 @@ add_library(http_tcl SHARED
     "src/util.cpp"
      )
 
-set_target_properties(http_tcl PROPERTIES 
+set_target_properties(http_tcl PROPERTIES
     OUTPUT_NAME "act_http"
     CXX_STANDARD 17
     CXX_STANDARD_REQUIRED YES
     CXX_EXTENSIONS OFF)
 
 add_compile_definitions(USE_TCL_STUBS)
-add_compile_definitions(WINVER=0x0A00 _WIN32_WINNT=0x0A00)
 find_package(Boost 1.75.0 REQUIRED)
 
-find_path(TCL_INCLUDE_DIR tcl.h REQUIRED)
-find_library(TCL_STUB_LIBRARY REQUIRED NAMES tclstub86 PATHS "${TCL_LIBRARY}")
+if(MSVC)
+add_compile_definitions(WINVER=0x0A00 _WIN32_WINNT=0x0A00)
+endif()
+
+find_path(TCL_INCLUDE_DIR tcl.h REQUIRED
+    HINTS ${CMAKE_SOURCE_DIR}/../tcl/generic /usr/local/tcl86/include /usr/local/tcl87/include)
+find_library(TCL_LIBRARY REQUIRED NAMES tcl86 tcl86t libtcl8.6.so libtcl8.7.so
+    HINTS ${TCL_INCLUDE_DIR}/../unix ${TCL_INCLUDE_DIR}/../win ${TCL_INCLUDE_DIR}/../macosx
+    /usr/local/tcl86/lib /usr/local/tcl87/lib)
+find_library(TCL_STUB_LIBRARY REQUIRED NAMES tclstub86 tclstub87 libtclstub8.6.a libtclstub8.7.a
+    HINTS ${TCL_INCLUDE_DIR}/../unix ${TCL_INCLUDE_DIR}/../win ${TCL_INCLUDE_DIR/../macosx}
+    /usr/local/tcl86/lib /usr/local/tcl87/lib)
 
 target_include_directories(http_tcl
   PRIVATE
@@ -43,20 +55,22 @@ target_include_directories(http_tcl
   "${CMAKE_SOURCE_DIR}/include"
   ${Boost_INCLUDE_DIRS})
 
-target_link_libraries(http_tcl 
+target_link_libraries(http_tcl
     PRIVATE
     ${TCL_STUB_LIBRARY}
     ${Boost_LIBRARIES}
     )
 
-# because tclStubLib.obj uses link time optimisation
-set_target_properties(http_tcl PROPERTIES LINK_FLAGS "/LTCG /INCREMENTAL:no")
+if(MSVC)
+    # because tclStubLib.obj uses link time optimisation
+    set_target_properties(http_tcl PROPERTIES LINK_FLAGS "/LTCG /INCREMENTAL:no")
+endif()
 
 # Copy TCL package index
 add_custom_target(http_tcl_tcl SOURCES
     "act_http/pkgIndex.tcl"
     COMMAND
-    ${CMAKE_COMMAND} -E copy_directory 
+    ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_CURRENT_SOURCE_DIR}/act_http
         ${CMAKE_CURRENT_BINARY_DIR}/act_http)
 
@@ -66,7 +80,7 @@ add_custom_target(http_tcl_test SOURCES
     "test/http.tcl"
     "test/test-util.tcl"
     COMMAND
-    ${CMAKE_COMMAND} -E copy_directory 
+    ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_CURRENT_SOURCE_DIR}/test
         ${CMAKE_CURRENT_BINARY_DIR}/test)
 
@@ -74,7 +88,7 @@ add_custom_target(http_tcl_test SOURCES
 add_custom_target(http_tcl_examples SOURCES
     "examples/userdb.tcl"
     COMMAND
-    ${CMAKE_COMMAND} -E copy_directory 
+    ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_CURRENT_SOURCE_DIR}/examples
         ${CMAKE_CURRENT_BINARY_DIR}/examples)
 
@@ -86,48 +100,3 @@ add_custom_command(TARGET http_tcl POST_BUILD
     ${CMAKE_COMMAND} -E copy
         $<TARGET_FILE:http_tcl>
         ${CMAKE_CURRENT_BINARY_DIR}/act_http)
-
-# install targets
-install(TARGETS http_tcl 
-        CONFIGURATIONS Debug
-        RUNTIME DESTINATION ${BASE_INSTALL_DIR}/Debug/act_http)
-
-install(TARGETS http_tcl 
-        CONFIGURATIONS Release
-        RUNTIME DESTINATION ${BASE_INSTALL_DIR}/Release/act_http)
-
-install(TARGETS http_tcl 
-        CONFIGURATIONS RelWithDebInfo
-        RUNTIME DESTINATION ${BASE_INSTALL_DIR}/RelWithDebInfo/act_http)
-
-# install subdirectories
-
-install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/act_http
-        CONFIGURATIONS Debug
-        DESTINATION ${BASE_INSTALL_DIR}/Debug
-        FILES_MATCHING PATTERN "*.tcl")
-
-install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/examples
-        CONFIGURATIONS Debug
-        DESTINATION ${BASE_INSTALL_DIR}/Debug
-        FILES_MATCHING PATTERN "*.tcl")
-
-install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/act_http
-        CONFIGURATIONS Release
-        DESTINATION ${BASE_INSTALL_DIR}/Release
-        FILES_MATCHING PATTERN "*.tcl")
-
-install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/examples
-        CONFIGURATIONS Release
-        DESTINATION ${BASE_INSTALL_DIR}/Release
-        FILES_MATCHING PATTERN "*.tcl")
-
-install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/act_http
-        CONFIGURATIONS RelWithDebInfo
-        DESTINATION ${BASE_INSTALL_DIR}/RelWithDebInfo
-        FILES_MATCHING PATTERN "*.tcl")
-
-install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/examples
-        CONFIGURATIONS RelWithDebInfo
-        DESTINATION ${BASE_INSTALL_DIR}/RelWithDebInfo
-        FILES_MATCHING PATTERN "*.tcl")

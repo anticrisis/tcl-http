@@ -210,7 +210,6 @@ proc cmake::clean {} {
 proc cmake::release {} {
     exec -- cmake -S . -B build
     exec -- cmake --build build --config Release
-    exec -- cmake --install build --config Release
 }
 
 proc cmake::main {words} {
@@ -224,11 +223,11 @@ proc cmake::main {words} {
 # ----------------------------------------------------------------------------
 
 namespace eval system {
-    variable target_dir [file normalize ./install/Release/act_http]
+    variable target_dir [file normalize ./build/act_http]
     variable target_binary [file normalize $target_dir/act_http[info sharedlibextension]]
 }
 
-proc system::tinstall {pathname} { 
+proc system::tinstall {pathname} {
     if {[file isdirectory $pathname] == 0} {
         puts "ERROR: $pathname must be a directory."
         exit 1
@@ -256,7 +255,7 @@ proc system::tinstall {pathname} {
 }
 
 proc system::install {} {
-    variable target_dir 
+    variable target_dir
     variable target_binary
     if {![file exists $target_binary]} {
         puts "ERROR: Could not find shared library. "

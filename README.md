@@ -53,11 +53,25 @@ After `git clone`, these four commands will build and install this extension.
 Their meaning and function are described below.
 
 ```sh
-$ act vcpkg setup
-$ act vcpkg install
-$ act cmake release
-$ (sudo) act system install # optional
+$ ./act vcpkg setup
+$ ./act vcpkg install
+$ ./act cmake release
+$ (sudo) ./act system install # optional
 ```
+
+### Tcl
+
+Your Tcl distribution must include `tcl.h` and the `tclstub` library
+appropriate to your system. For example, the ActiveTcl distribution for
+Windows includes these components.
+
+Alternatively, you can build Tcl from source yourself to generate the stubs
+library.
+
+Important: this extension's cmake-based build system relies on being able to
+find `tcl.h` and the `tclstub` library on your path, or in certain typical
+places. See the `find_path` and `find_library` lines in `CMakeLists.txt` for
+details.
 
 ### C++
 
@@ -119,14 +133,16 @@ installed anywhere else on your system.
 Once `vcpkg` is set up, building and installing is as easy as:
 
 ```sh
-$ act cmake release
-$ (sudo) act system install
+$ ./act cmake release
+$ (sudo) ./act system install
 ```
 
-If you prefer not to install the built extension into your system library directory, you can refer
-to the `install` directory created as part of the `act cmake release` step. It will contain the package directory you need to place on your `TCLLIBPATH` to use the extension.
+If you prefer not to install the built extension into your system library
+directory, you can refer to the `install` directory created as part of the
+`act cmake release` step. It will contain the package directory you need to
+place on your `TCLLIBPATH` to use the extension.
 
-### Verifying 
+### Verifying
 
 Test if you've successfully installed the package on your TCLLIBPATH:
 
