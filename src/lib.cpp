@@ -1,6 +1,7 @@
 #include "dllexport.h"
 #include "http_tcl/http_tcl.h"
 #include "util.h"
+#include "version.h"
 
 #include <algorithm>
 #include <iostream>
@@ -15,7 +16,7 @@
 #define theUrlNamespaceName "::act::url"
 static constexpr auto theParentNamespace = "::act";
 static constexpr auto thePackageName     = "act_http";
-static constexpr auto thePackageVersion  = "0.1";
+static constexpr auto thePackageVersion  = PROJECT_VERSION;
 
 // Configuration structure with refcounted Tcl objects. Managed using
 // the 'http::configure' command.

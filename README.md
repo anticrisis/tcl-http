@@ -56,7 +56,8 @@ Their meaning and function are described below.
 $ ./act vcpkg setup
 $ ./act vcpkg install
 $ ./act cmake release
-$ (sudo) ./act system install # optional
+$ (sudo) ./act system install package # optional
+$ (sudo) ./act system install module  # optional
 ```
 
 ### Tcl
@@ -134,7 +135,9 @@ Once `vcpkg` is set up, building and installing is as easy as:
 
 ```sh
 $ ./act cmake release
-$ (sudo) ./act system install
+$ (sudo) ./act system install package
+or
+$ (sudo) ./act system install module
 ```
 
 If you prefer not to install the built extension into your system library
@@ -148,6 +151,14 @@ Test if you've successfully installed the package on your TCLLIBPATH:
 
 ```tcl
 % package require act_http
+0.1
+%
+```
+
+If you've installed the module:
+
+```tcl
+% package require act::http
 0.1
 %
 ```

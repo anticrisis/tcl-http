@@ -1,9 +1,19 @@
 #!/bin/sh
 # -*- tcl -*- \
-# the next line restarts using tclsh \
+command -v tclsh > /dev/null 2>&1 || { echo "Can't find tclsh on your path. Consider invoking as 'path/to/tclsh act ..."; exit 1;} # \
 exec tclsh "$0" ${1+"$@"}
 
 #
+# project-specific configuration
+#
+set build_dir             ./build
+set build_type            Release
+set build_libname_file    libname.txt ;# set in CMakeLists.txt
+set build_version_file    version.h
+set build_version_var     PROJECT_VERSION
+set project_module_root   act
+set project_module_name   http
+set project_package       act_http
 
 # default settings
 array set opts {
@@ -39,14 +49,17 @@ proc usage {} {
     puts [subst -nocommands \
          {Usage:    $cmd_name [-v] [--dry-run] [--vcpkg-repo] [--packages file] commands...}]
     puts "Commands:"
-    puts "    cmake clean       Remove ./build directory."
-    puts "    cmake release     Perform release build and install into ./install directory."
-    puts "    system install    Copy built package to system's Tcl lib directory."
-    puts "    vcpkg bootstrap   Perform one-time post-clone setup."
-    puts "    vcpkg clone       Clone vcpkg repository."
-    puts "    vcpkg install     Install required packages from package file."
-    puts "    vcpkg setup       Perform initial setup: clone and bootstrap."
-    puts "    vcpkg update      Perform git pull."
+    puts "    cmake clean         Remove ./build directory."
+    puts "    cmake release       Perform release build."
+    puts "    system dir package  Print package installation path, if writable."
+    puts "    system dir module   Print module installation path, if writable."
+    puts "    system install package Copy built package to system's Tcl lib directory."
+    puts "    system install module  Copy built module to system's Tcl module directory."
+    puts "    vcpkg bootstrap     Perform one-time post-clone setup."
+    puts "    vcpkg clone         Clone vcpkg repository."
+    puts "    vcpkg install       Install required packages from package file."
+    puts "    vcpkg setup         Perform initial setup: clone and bootstrap."
+    puts "    vcpkg update        Perform git pull."
     puts ""
     puts "Command options: a single hypen may also be used to prefix extended options."
     puts "                 For example, -dry-run is the same as --dry-run."
@@ -83,19 +96,92 @@ proc util::exit_unless_compiler {} {
         }
 
     } else {
-        if {[catch {exec g++ --version}]} {
+        if {[catch {exec -- g++ --version}]} {
             puts "Could not find g++."
             exit 1
         }
     }
 }
 
+proc util::read_file {filename} {
+    set f [open $filename r]
+    set res [read -nonewline $f]
+    close $f
+    return $res
+}
+
 proc util::read_lines {filename} {
     set out {}
-    set f [open $filename r]
-    set buf [read -nonewline $f]
-    close $f
+    set buf [read_file $filename]
     split $buf \n
+}
+
+proc util::get_define {filename define} {
+    # return the string value after '#define $define' in $filename
+    set in [read_lines $filename]
+    foreach line $in {
+        set r [regexp -all -inline {\S+} $line]
+        if {[llength $r] < 3} { continue }
+        if { [expr { [lindex $r 0] eq "#define" }] && \
+             [expr { [lindex $r 1] eq $define   }]} {
+            return [regexp -inline {[^"]+} [lindex $r 2]]
+        }
+    }
+}
+
+proc util::append_binary {source target} {
+    # append the binary file $source to the end of $target, separated by SUB (^Z)
+
+    set in  [open $source rb]
+    set data [read $in]
+    close $in
+
+    set out [open $target ab]
+    puts -nonewline $out \032
+    puts -nonewline $out $data
+    close $out
+}
+
+proc util::module_filename {} {
+    global build_dir
+    global build_version_file
+    global build_version_var
+    global project_module_name
+
+    # read version (output by cmake)
+    set vsn [util::get_define $build_dir/$build_version_file $build_version_var]
+
+    # construct module file name
+    set module_filename "$project_module_name-$vsn.tm"
+    return $module_filename
+}
+
+proc util::create_module {} {
+    # after successful cmake build, create the tcl module file
+    global build_dir
+    global build_libname_file
+    global build_version_file
+    global build_version_var
+    global project_module_root
+    global project_module_name
+    global project_package
+
+    # read name of generated library (output by cmake)
+    set libname [read_file $build_dir/$build_libname_file]
+
+    # read version (output by cmake)
+    set vsn [util::get_define $build_dir/$build_version_file $build_version_var]
+
+    # construct module file name
+    set module_filename [module_filename]
+
+    # create parent directory
+    if {![file exists $build_dir/$project_module_root]} {
+        file mkdir $build_dir/$project_module_root
+    }
+
+    # create module file
+    util::append_binary $build_dir/$libname $build_dir/$project_module_root/$module_filename
 }
 
 # ----------------------------------------------------------------------------
@@ -203,28 +289,60 @@ proc vcpkg::main {words} {
 namespace eval cmake {}
 
 proc cmake::clean {} {
-    file delete -force ./build
-    file delete -force ./install
+    global build_dir
+    file delete -force $build_dir
 }
 
 proc cmake::release {} {
-    exec -- cmake -S . -B build
-    exec -- cmake --build build --config Release
+    global build_dir
+    global build_type
+
+    exec -- cmake -S . -B $build_dir
+    exec -- cmake --build $build_dir --config $build_type
+
+    # create Tcl module from built library
+    util::create_module
 }
 
 proc cmake::main {words} {
     switch [lindex $words 1] {
         "clean"    {clean}
         "release"  {release}
-        default     {usage; exit 1}
+        default    {usage; exit 1}
     }
 }
 
 # ----------------------------------------------------------------------------
 
 namespace eval system {
-    variable target_dir [file normalize ./build/act_http]
-    variable target_binary [file normalize $target_dir/act_http[info sharedlibextension]]
+    global build_dir
+    global project_module_root
+    global project_package
+
+    variable target_dir        [file normalize $build_dir/$project_package]
+    variable target_module_dir [file normalize $build_dir/$project_module_root]
+}
+
+proc system::writable_lib {} {
+    set scriptdir ""
+    foreach dir $::auto_path {
+        if {[file writable $dir]} {
+            set scriptdir $dir
+            break
+        }
+    }
+    return $scriptdir
+}
+
+proc system::writable_module {} {
+    set scriptdir ""
+    foreach dir [::tcl::tm::path list] {
+        if {[file writable $dir]} {
+            set scriptdir $dir
+            break
+        }
+    }
+    return $scriptdir
 }
 
 proc system::tinstall {pathname} {
@@ -233,16 +351,10 @@ proc system::tinstall {pathname} {
         exit 1
     }
 
-    set scriptdir ""
-    foreach dir $::auto_path {
-        if {[file writable $dir]} {
-            set scriptdir $dir
-            break
-        }
-    }
+    set scriptdir [writable_lib]
 
     if {$scriptdir eq ""} {
-        puts "Could not write to any path in auto_path: $auto_path"
+        puts "Could not write to any path in auto_path: $::auto_path"
         exit 1
     }
 
@@ -254,21 +366,64 @@ proc system::tinstall {pathname} {
     file copy -force $pathname $scriptdir
 }
 
-proc system::install {} {
+proc system::tinstall_module {pathname} {
+    if {[file isdirectory $pathname] == 0} {
+        puts "ERROR: $pathname must be a directory."
+        exit 1
+    }
+
+    set scriptdir [writable_module]
+
+    if {$scriptdir eq ""} {
+        puts "Could not write to any path in ::tcl::tm::path list: [::tcl::tm::path list]"
+        exit 1
+    }
+
+    set path_tail [file tail $pathname]
+    if {$path_tail ne "" && [file exists $scriptdir/$path_tail]} {
+        file delete -force $scriptdir/$path_tail
+    }
+    puts "Copying $pathname to $scriptdir/$path_tail"
+    file copy -force $pathname $scriptdir
+}
+
+proc system::install_package {} {
     variable target_dir
-    variable target_binary
-    if {![file exists $target_binary]} {
-        puts "ERROR: Could not find shared library. "
-        puts "Consider first running $argv0 cmake install"
+    if {![file exists $target_dir]} {
+        puts "ERROR: Could not find package. "
+        puts "Consider first running $::argv0 cmake release"
         exit 1
     }
 
     tinstall $target_dir
 }
 
+proc system::install_module {} {
+    variable target_module_dir
+    if {![file exists $target_module_dir]} {
+        puts "ERROR: Could not find module. "
+        puts "Consider first running $::argv0 cmake release"
+        exit 1
+    }
+
+    tinstall_module $target_module_dir
+}
+
+
 proc system::main {words} {
     switch [lindex $words 1] {
-        install  {install}
+        install  {switch [lindex $words 2] {
+            package {install_package}
+            module  {install_module}
+            default {usage; exit 1}
+        }}
+
+        dir {switch [lindex $words 2] {
+            package {puts [writable_lib]}
+            module  {puts [writable_module]}
+            default {usage; exit 1}
+        }}
+
         default  {usage; exit 1}
     }
 }
@@ -281,6 +436,7 @@ util::exit_unless_compiler
 
 verbose "Command words: $commands"
 verbose "Options:"; if {$::opts(verbose)} {parray opts}
+
 
 if {[llength $commands] > 0} {
     switch [lindex $commands 0] {

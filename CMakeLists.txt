@@ -7,7 +7,7 @@ set(CMAKE_TOOLCHAIN_FILE ${CMAKE_SOURCE_DIR}/../vcpkg/scripts/buildsystems/vcpkg
 endif()
 
 project(tcl_http
-  VERSION 0.1.0
+  VERSION 0.1
   DESCRIPTION "Tcl extension providing HTTP server"
   LANGUAGES CXX)
 
@@ -33,6 +33,9 @@ set_target_properties(http_tcl PROPERTIES
     CXX_STANDARD_REQUIRED YES
     CXX_EXTENSIONS OFF)
 
+configure_file(src/version.h.in version.h)
+file(GENERATE OUTPUT libname.txt CONTENT $<TARGET_FILE_NAME:http_tcl>)
+
 add_compile_definitions(USE_TCL_STUBS)
 find_package(Boost 1.75.0 REQUIRED)
 
@@ -51,6 +54,7 @@ find_library(TCL_STUB_LIBRARY REQUIRED NAMES tclstub86 tclstub87 libtclstub8.6.a
 
 target_include_directories(http_tcl
   PRIVATE
+  "${CMAKE_CURRENT_BINARY_DIR}"
   "${TCL_INCLUDE_DIR}"
   "${CMAKE_SOURCE_DIR}/include"
   ${Boost_INCLUDE_DIRS})
