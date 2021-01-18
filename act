@@ -1,0 +1,295 @@
+#!/bin/sh
+# -*- tcl -*- \
+# the next line restarts using tclsh \
+exec tclsh "$0" ${1+"$@"}
+
+#
+
+# default settings
+array set opts {
+    help         0
+    verbose      0
+    vcpkg_repo   https://github.com/microsoft/vcpkg
+    dry_run      0
+    packages     "packages.txt"
+}
+
+set commands {}
+
+# read command line arguments
+for {set i 0} {$i < $argc} {incr i} {
+    set arg [lindex $argv $i]
+    switch [lindex $argv $i] {
+        "-h"           {set opts(help) 1}
+        "-v"           {set opts(verbose) 1}
+        "-vcpkg-repo"  -
+        "--vcpkg-repo" {set opts(vcpkg_repo) [lindex $argv [incr i]]}
+        "-dry-run"     -
+        "--dry-run"    {set opts(dry_run) 1}
+        "-packages"    -
+        "--packages"   {set opts(packages) [lindex $argv [incr i]]}
+        default {
+            lappend commands [lindex $argv $i]
+        }
+    }
+}
+
+proc usage {} {
+    set cmd_name [file tail $::argv0]
+    puts [subst -nocommands \
+         {Usage:    $cmd_name [-v] [--dry-run] [--vcpkg-repo] [--packages file] commands...}]
+    puts "Commands:"
+    puts "    cmake clean       Remove ./build directory."
+    puts "    cmake release     Perform release build and install into ./install directory."
+    puts "    system install    Copy built package to system's Tcl lib directory."
+    puts "    vcpkg bootstrap   Perform one-time post-clone setup."
+    puts "    vcpkg clone       Clone vcpkg repository."
+    puts "    vcpkg install     Install required packages from package file."
+    puts "    vcpkg setup       Perform initial setup: clone and bootstrap."
+    puts "    vcpkg update      Perform git pull."
+    puts ""
+    puts "Command options: a single hypen may also be used to prefix extended options."
+    puts "                 For example, -dry-run is the same as --dry-run."
+    puts ""
+}
+
+if {$::opts(help)} {usage; exit 0}
+if {$argc == 0} {usage; exit 1}
+
+proc verbose {msg} {if {$::opts(verbose)} {puts $msg}}
+
+# ----------------------------------------------------------------------------
+
+namespace eval util {}
+
+proc util::exit_unless_git {} {
+    if {[catch {exec git version}]} {
+        puts "git is not installed or is not on your path. Exiting."
+        exit 1
+    }
+}
+
+proc util::is_windows {} {
+    return [expr {$::tcl_platform(platform) eq "windows"}]
+}
+
+proc util::exit_unless_compiler {} {
+    if {[util::is_windows]} {
+        # It would be much easier if cl had a 'version' command
+        if {[catch {exec -ignorestderr -- cl -help 2>@1}]} {
+            puts "Could not find Microsoft Visual C++ Build Tools."
+            puts "See https://docs.microsoft.com/en-us/cpp/build/building-on-the-command-line?view=msvc-160"
+            exit 1
+        }
+
+    } else {
+        if {[catch {exec g++ --version}]} {
+            puts "Could not find g++."
+            exit 1
+        }
+    }
+}
+
+proc util::read_lines {filename} {
+    set out {}
+    set f [open $filename r]
+    set buf [read -nonewline $f]
+    close $f
+    split $buf \n
+}
+
+# ----------------------------------------------------------------------------
+
+namespace eval vcpkg {
+    # vcpkg directory location cannot be changed, because this would
+    # require changing CMAKE_TOOLCHAIN_FILE, which isn't worth the
+    # trouble for something designed to be turnkey.
+    variable vcpkg_dir [file normalize [file join [pwd] .. vcpkg]]
+}
+
+proc vcpkg::clone {} {
+    variable vcpkg_dir
+    util::exit_unless_git
+
+    if {$::opts(dry_run)} {
+        puts "git clone $::opts(vcpkg_repo) $vcpkg_dir"
+    } else {
+        puts "Cloning vcpkg into $vcpkg_dir..."
+        set res [exec -ignorestderr git clone $::opts(vcpkg_repo) $vcpkg_dir 2>@1]
+        puts $res
+    }
+}
+
+proc vcpkg::bootstrap {} {
+    variable vcpkg_dir
+    util::exit_unless_compiler
+
+    if {[util::is_windows]} {
+        set bootstrap [file join $vcpkg_dir bootstrap-vcpkg.bat]
+    } else {
+        set bootstrap [file join $vcpkg_dir bootstrap-vcpkg.sh]
+    }
+    if {$::opts(dry_run)} {
+        puts $bootstrap
+    } else {
+        puts "Executing $bootstrap..."
+        puts "Compiling may take several minutes with no output until complete..."
+        set res [exec -ignorestderr $bootstrap 2>@1]
+        puts $res
+    }
+}
+
+proc vcpkg::setup {} {
+    clone
+    bootstrap
+}
+
+proc vcpkg::update {} {
+    variable vcpkg_dir
+    util::exit_unless_git
+    set cmd "[file join $vcpkg_dir vcpkg]"
+
+    if {$::opts(dry_run)} {
+        puts "git -C $vcpkg_dir pull"
+        puts "$cmd update"
+    } else {
+        puts "Performing git pull on $vcpkg_dir"
+        set res [exec git -C $vcpkg_dir pull]
+        puts $res
+        puts "Performing vcpkg update"
+        set res [exec -ignorestderr $cmd update 2>@1]
+        puts $res
+    }
+}
+
+proc vcpkg::install {} {
+    variable vcpkg_dir
+    if {![file exists $::opts(packages)]} {
+        puts "ERROR: $::opts(packages) does not exist."
+        exit 1
+    }
+
+    set packages [util::read_lines $::opts(packages)]
+    ::verbose "Found in $::opts(packages): $packages"
+
+    set cmd "[file join $vcpkg_dir vcpkg]"
+    if {$::opts(dry_run)} {
+        puts "$cmd install $packages"
+    } else {
+        puts "Installing packages from $::opts(packages)"
+        puts "Compiling may take a long time with no output until complete..."
+        puts "Consider executing this command manually instead:"
+        puts "    $cmd install $packages"
+        puts ""
+        puts "Fetching and compiling..."
+        set res [exec -ignorestderr $cmd install {*}$packages 2>@1]
+        puts $res
+    }
+}
+
+proc vcpkg::main {words} {
+    switch [lindex $words 1] {
+        "bootstrap" {bootstrap}
+        "clone"     {clone}
+        "install"   {install}
+        "setup"     {setup}
+        "update"    {update}
+        default     {usage; exit 1}
+    }
+}
+
+# ----------------------------------------------------------------------------
+
+namespace eval cmake {}
+
+proc cmake::clean {} {
+    file delete -force ./build
+    file delete -force ./install
+}
+
+proc cmake::release {} {
+    exec -- cmake -S . -B build
+    exec -- cmake --build build --config Release
+    exec -- cmake --install build --config Release
+}
+
+proc cmake::main {words} {
+    switch [lindex $words 1] {
+        "clean"    {clean}
+        "release"  {release}
+        default     {usage; exit 1}
+    }
+}
+
+# ----------------------------------------------------------------------------
+
+namespace eval system {
+    variable target_dir [file normalize ./install/Release/act_http]
+    variable target_binary [file normalize $target_dir/act_http[info sharedlibextension]]
+}
+
+proc system::tinstall {pathname} { 
+    if {[file isdirectory $pathname] == 0} {
+        puts "ERROR: $pathname must be a directory."
+        exit 1
+    }
+
+    set scriptdir ""
+    foreach dir $::auto_path {
+        if {[file writable $dir]} {
+            set scriptdir $dir
+            break
+        }
+    }
+
+    if {$scriptdir eq ""} {
+        puts "Could not write to any path in auto_path: $auto_path"
+        exit 1
+    }
+
+    set path_tail [file tail $pathname]
+    if {$path_tail ne "" && [file exists $scriptdir/$path_tail]} {
+        file delete -force $scriptdir/$path_tail
+    }
+    puts "Copying $pathname to $scriptdir/$path_tail"
+    file copy -force $pathname $scriptdir
+}
+
+proc system::install {} {
+    variable target_dir 
+    variable target_binary
+    if {![file exists $target_binary]} {
+        puts "ERROR: Could not find shared library. "
+        puts "Consider first running $argv0 cmake install"
+        exit 1
+    }
+
+    tinstall $target_dir
+}
+
+proc system::main {words} {
+    switch [lindex $words 1] {
+        install  {install}
+        default  {usage; exit 1}
+    }
+}
+
+# require git
+verbose {Checking output of 'git version'... }
+util::exit_unless_git
+verbose {Checking for C compiler...}
+util::exit_unless_compiler
+
+verbose "Command words: $commands"
+verbose "Options:"; if {$::opts(verbose)} {parray opts}
+
+if {[llength $commands] > 0} {
+    switch [lindex $commands 0] {
+        "cmake"  {cmake::main $commands}
+        "system" {system::main $commands}
+        "vcpkg"  {vcpkg::main $commands}
+        default {usage; exit 1}
+    }
+} else {
+    usage; exit 1
+}
