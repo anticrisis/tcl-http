@@ -7,18 +7,23 @@ A simple, fast HTTP server with Tcl handlers.
 - Fast C++ server implementation based on Boost::Beast.
 - Also includes simple synchronous HTTP client.
 
+Bonus:
+
+- A configuration script, `act`, to manage C++ dependencies, Tcl package
+  installation, Tcl module creation and installation, etc.
+- Some tips for (advanced) beginners.
+
 ## Usage
 
 ```tcl
-% package require act_http
+% package require act::http ;# if you installed module
+% package require act_http  ;# or if you installed package
 % namespace import act::*
 % http configure -host 127.0.0.1 -port 1234 -get {list 200 "hello, world" "text/plain"}
 % http run
 ```
 
-This is a pure C shared library extension, with no Tcl code. You can also load
-the package by using `load` and a pathname to wherever you installed the
-shared library.
+This is a pure C shared library extension, with no Tcl code.
 
 ## Configuration
 
@@ -56,8 +61,9 @@ Their meaning and function are described below.
 $ ./act vcpkg setup
 $ ./act vcpkg install
 $ ./act cmake release
-$ (sudo) ./act system install package # optional
-$ (sudo) ./act system install module  # optional
+$ ./act system install module  
+or
+$ ./act system install package 
 ```
 
 ### Tcl
@@ -73,6 +79,41 @@ Important: this extension's cmake-based build system relies on being able to
 find `tcl.h` and the `tclstub` library on your path, or in certain typical
 places. See the `find_path` and `find_library` lines in `CMakeLists.txt` for
 details.
+
+### Tcl tips
+
+I place extensions and packages into my `~/.tcl` directory, and use an init file
+to configure the paths. That init file is sourced by the `act` script so that
+the `act system install` commands find user paths in which to install the
+artifacts.
+
+For example, since I prefer modules, my `.tcl` directory looks like this:
+
+```plain
+/home/anticrisis/.tcl
+├── init.tcl
+├── modules
+│   └── act
+│       └── http-0.1.tm
+└── packages
+```
+
+`~/.tcl/init.tcl` contains:
+
+```tcl
+::tcl::tm::path add [file normalize ~/.tcl/modules]
+lappend ::auto_path [file normalize ~/.tcl/packages]
+```
+
+and `~/.tclshrc` (or `tclshrc.tcl` on Windows):
+
+```tcl
+source ~/.tcl/init.tcl
+```
+
+If I was dealing with Tcl-version-specific modules and packages, I would adjust
+init.tcl accordingly, to select the appropriate paths based on the running tclsh
+version.
 
 ### C++
 
@@ -135,9 +176,9 @@ Once `vcpkg` is set up, building and installing is as easy as:
 
 ```sh
 $ ./act cmake release
-$ (sudo) ./act system install package
+$ ./act system install module
 or
-$ (sudo) ./act system install module
+$ ./act system install package
 ```
 
 If you prefer not to install the built extension into your system library

@@ -4,6 +4,12 @@ command -v tclsh > /dev/null 2>&1 || { echo "Can't find tclsh on your path. Cons
 exec tclsh "$0" ${1+"$@"}
 
 #
+# source user's init script, if present, to pick up user-defined module and
+# package paths
+#
+if {[file exists ~/.tcl/init.tcl]} {source ~/.tcl/init.tcl}
+
+#
 # project-specific configuration
 #
 set build_dir             ./build
@@ -156,6 +162,29 @@ proc util::module_filename {} {
     return $module_filename
 }
 
+proc util::find_lib {} {
+    # find library artifact
+    global build_dir
+    global build_type
+    global build_libname_file
+
+    # read name of generated library (output by cmake)
+    set libname [read_file $build_dir/$build_libname_file]
+
+    set path $build_dir/$libname
+    if {[file exists $path]} {
+        return $path
+    } else {
+        set path $build_dir/$build_type/$libname
+        if {[file exists $path]} {
+            return $path
+        } else {
+            puts "ERROR: Could not find library artifact."
+            exit 1
+        }
+    }
+}
+
 proc util::create_module {} {
     # after successful cmake build, create the tcl module file
     global build_dir
@@ -165,9 +194,6 @@ proc util::create_module {} {
     global project_module_root
     global project_module_name
     global project_package
-
-    # read name of generated library (output by cmake)
-    set libname [read_file $build_dir/$build_libname_file]
 
     # read version (output by cmake)
     set vsn [util::get_define $build_dir/$build_version_file $build_version_var]
@@ -181,7 +207,8 @@ proc util::create_module {} {
     }
 
     # create module file
-    util::append_binary $build_dir/$libname $build_dir/$project_module_root/$module_filename
+    set lib_path [find_lib]
+    util::append_binary $lib_path $build_dir/$project_module_root/$module_filename
 }
 
 # ----------------------------------------------------------------------------
