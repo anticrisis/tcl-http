@@ -16,8 +16,7 @@ Bonus:
 ## Usage
 
 ```tcl
-% package require act::http ;# if you installed module
-% package require act_http  ;# or if you installed package
+% package require act::http 
 % namespace import act::*
 % http configure -host 127.0.0.1 -port 1234 -get {list 200 "hello, world" "text/plain"}
 % http run
@@ -112,7 +111,7 @@ source ~/.tcl/init.tcl
 ```
 
 If I was dealing with Tcl-version-specific modules and packages, I would adjust
-init.tcl accordingly, to select the appropriate paths based on the running tclsh
+`init.tcl` accordingly, to select the appropriate paths based on the running tclsh
 version.
 
 ### C++
@@ -191,14 +190,6 @@ place on your `TCLLIBPATH` to use the extension.
 Test if you've successfully installed the package on your TCLLIBPATH:
 
 ```tcl
-% package require act_http
-0.1
-%
-```
-
-If you've installed the module:
-
-```tcl
 % package require act::http
 0.1
 %
@@ -209,8 +200,7 @@ If you've installed the module:
 Basic tests are provided, which launch subprocesses to run the http server, and
 use this extension's included http client to check for specific responses.
 
-To run the tests, build the shared library, then ensure that the `act_http`
-package directory containing `pkgIndex.tcl` is on your TCLLIBPATH, then:
+To run the tests, build the shared library, then:
 
 ```sh
 $ cd test
@@ -224,6 +214,9 @@ example to run the tests in url.tcl only:
 $ tclsh all.tcl -file url.tcl
 ```
 
+Tests run successfully on Microsoft Windows 10 and Ubuntu 20.04 (in WSL2).
+If you are a Mac user and run into problems, please let me know.
+
 ## Performance
 
 This is an "on my machine" test of a simple "hello, world" app, which is of
@@ -231,8 +224,8 @@ course not representative of actual workloads. But it does serve to show the
 minimal overhead added to a realistic workload by the http server itself.
 
 ```tcl
-% package require act_http
-% namespace import anticrisis:*
+% package require act::http
+% namespace import act::*
 % http configure -host 127.0.0.1 -port 8080 -get {list 200 "hello, world" "text/plain"}
 % http run
 ```
