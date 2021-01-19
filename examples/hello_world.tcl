@@ -1,11 +1,18 @@
 #!/bin/env tclsh
 #
-# Ensure act_http directory is on your auto_path or TCLLIBPATH, 
+# Ensure the act/http-{vsn}.tm module is on your module path
 # then invoke like this:
 #
 # $ tclsh hello_world.tcl -host 127.0.0.1 -port 8080
 #
-package require act_http
+
+#
+# source user's init script, if present, to pick up user-defined module and
+# package paths
+#
+if {[file exists ~/.tcl/init.tcl]} {source ~/.tcl/init.tcl}
+
+package require act::http
 namespace import act::*
 
 http configure -get {list 200 "hello world" "text/plain"}
