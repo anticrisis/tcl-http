@@ -148,6 +148,30 @@ proc util::append_binary {source target} {
     close $out
 }
 
+proc util::make_module {source target} {
+    # make a module which will load $source when it is sourced
+    # TODO: tmp file is locked open, is there a way to delete it on exit?
+    global project_package
+    set out [open $target w]
+    puts $out "set project_package $project_package"
+    puts $out {
+        set path [info script]
+        set f [open $path rb]
+        while {![eof $f]} {
+            set c [read $f 1]
+            if {$c eq "\032"} { break }
+        }
+        set tmp [file tempfile tmp_name]
+        fconfigure $tmp -translation binary
+        fcopy $f $tmp
+        close $tmp
+        close $f
+        load $tmp_name $project_package
+    }
+    close $out
+    append_binary $source $target
+}
+
 proc util::module_filename {} {
     global build_dir
     global build_version_file
@@ -193,7 +217,6 @@ proc util::create_module {} {
     global build_version_var
     global project_module_root
     global project_module_name
-    global project_package
 
     # read version (output by cmake)
     set vsn [util::get_define $build_dir/$build_version_file $build_version_var]
@@ -208,7 +231,10 @@ proc util::create_module {} {
 
     # create module file
     set lib_path [find_lib]
-    util::append_binary $lib_path $build_dir/$project_module_root/$module_filename
+    set module_path $build_dir/$project_module_root/$module_filename
+    if {[file exists $module_path]} {file delete $module_path}
+
+    util::make_module $lib_path $module_path
 }
 
 # ----------------------------------------------------------------------------

@@ -15,7 +15,7 @@
 #define theNamespaceName    "::act::http"
 #define theUrlNamespaceName "::act::url"
 static constexpr auto theParentNamespace = "::act";
-static constexpr auto thePackageName     = "act_http";
+static constexpr auto thePackageName     = "act::http";
 static constexpr auto thePackageVersion  = PROJECT_VERSION;
 
 // Configuration structure with refcounted Tcl objects. Managed using
@@ -759,7 +759,9 @@ extern "C"
   Act_http_Unload(Tcl_Interp* i, int flags)
   {
     auto ns = Tcl_FindNamespace(i, theNamespaceName, nullptr, 0);
+    auto url_ns = Tcl_CreateNamespace(i, theUrlNamespaceName, nullptr, nullptr);
     Tcl_DeleteNamespace(ns);
+    Tcl_DeleteNamespace(url_ns);
 
     // init client data again to free variables in the prior configuration
     theClientData.init(i);
