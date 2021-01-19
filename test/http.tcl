@@ -14,12 +14,14 @@ namespace import ::act::*
 
 proc kill {port} {
     global test_addr
-    act::http client {*}$test_addr -port $port -method options -target "/die"
+    http client {*}$test_addr -port $port -method options -target "/die"
+    after 50
 }
 
 proc background {port prog} {
     global tclsh load_http test_addr test_server
     exec $tclsh << [subst -nocommands $prog] &
+    after 50
 }
 
 proc without_headers {res} {list [lindex $res 0] [lindex $res 2]}
@@ -35,7 +37,6 @@ test get_hello {Sanity check: hello world} -body {
             {*}$test_server -port $port
         http run
         }
-
     set res [http client {*}$test_addr -port $port -method get -target /]
     kill $port
     without_headers $res
