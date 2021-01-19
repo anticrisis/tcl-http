@@ -6,7 +6,8 @@ source ./test-util.tcl
 set tclsh        [info nameofexecutable]
 set test_addr    {-host 127.0.0.1}
 set test_server  [list {*}$test_addr -exittarget "/die"]
-set load_http    {load ../build/act_http/act_http}
+
+set load_http "load [find_lib act_http ../build]"
 
 {*}$load_http
 namespace import ::act::*

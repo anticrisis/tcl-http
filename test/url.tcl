@@ -1,7 +1,8 @@
 package require tcltest
 namespace import ::tcltest::*
 
-load ../build/act_http/act_http
+source ./test-util.tcl
+load [find_lib act_http ../build]
 namespace import ::act::*
 
 source ./test-util.tcl
