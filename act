@@ -410,8 +410,8 @@ proc cmake::release {} {
     global build_dir
     global build_type
 
-    exec -- cmake -S . -B $build_dir
-    exec -- cmake --build $build_dir --config $build_type
+    exec -- cmake -S . -B $build_dir -DCMAKE_BUILD_TYPE=$build_type
+    exec -- cmake --build $build_dir
 
     # create Tcl module from built library
     util::create_module
