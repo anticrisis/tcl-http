@@ -12,6 +12,8 @@ if {[file exists ~/.tcl/init.tcl]} {source ~/.tcl/init.tcl}
 #
 # project-specific configuration
 #
+# To customize, add them to ./project.tcl
+#
 set build_dir             ./build
 set build_type            Release
 
@@ -20,12 +22,16 @@ set build_libname_file    libname.txt
 set build_version_file    version.h
 set build_version_var     PROJECT_VERSION
 
-# modules are nested one level deep, e.g. act/mymodule
-set project_module_root   act
-set project_module_name   http
+# modules are nested one level deep, e.g. myroot/mymodule
+set project_module_root   myroot
+set project_module_name   mymodule
 
 # build artifacts (incl. binaries) go in $build_dir/$project_package
-set project_package       act_http
+# this directory is used in CMakeLists.txt
+set project_package       myroot_mymodule
+
+# get project-specific overrides
+if {[file exists ./project.tcl]} {source ./project.tcl}
 
 # ----------------------------------------------------------------------------
 
