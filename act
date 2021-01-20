@@ -195,7 +195,7 @@ proc util::make_zip_module {srcdir target} {
         }
         close $f
     }
-    set zip [file tempfile tmp_name]
+    set zip [file tempfile]
     close $zip
     zipfs mkzip $zip $srcdir $srcdir
 
@@ -211,12 +211,12 @@ proc util::make_zip_module {srcdir target} {
             if {$c eq "\032"} { break }
         }
         set tmp [file tempfile tmp_name]
-        fconfigure $zip -translation binary
-        fcopy $f $zip
-        close $zip
+        fconfigure $tmp -translation binary
+        fcopy $f $tmp
+        close $tmp
         close $f
 
-        zipfs mount $project_package $zip_name
+        zipfs mount $project_package $tmp_name
         source [zipfs root]$project_package/main.tcl
     }
     close $out
