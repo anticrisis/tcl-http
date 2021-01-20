@@ -70,7 +70,7 @@ proc usage {} {
          {Usage:    $cmd_name [-v] [--dry-run] [--vcpkg-repo] [--packages file] commands...}]
     puts "Commands:"
     puts "    cmake clean         Remove ./build directory."
-    puts "    cmake release       Perform release build."
+    puts "    cmake build         Perform release build."
     puts "    system dir package  Print package installation path, if writable."
     puts "    system dir module   Print module installation path, if writable."
     puts "    system install package Copy built package to system's Tcl lib directory."
@@ -412,7 +412,7 @@ proc cmake::clean {} {
     file delete -force $build_dir
 }
 
-proc cmake::release {} {
+proc cmake::build {} {
     global build_dir
     global build_type
 
@@ -426,7 +426,7 @@ proc cmake::release {} {
 proc cmake::main {words} {
     switch [lindex $words 1] {
         "clean"    {clean}
-        "release"  {release}
+        "build"    {build}
         default    {usage; exit 1}
     }
 }
@@ -510,7 +510,7 @@ proc system::install_package {} {
     variable target_dir
     if {![file exists $target_dir]} {
         puts "ERROR: Could not find package. "
-        puts "Consider first running $::argv0 cmake release"
+        puts "Consider first running $::argv0 cmake build"
         exit 1
     }
 
@@ -521,7 +521,7 @@ proc system::install_module {} {
     variable target_module_dir
     if {![file exists $target_module_dir]} {
         puts "ERROR: Could not find module. "
-        puts "Consider first running $::argv0 cmake release"
+        puts "Consider first running $::argv0 cmake build"
         exit 1
     }
 
