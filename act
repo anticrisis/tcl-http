@@ -14,12 +14,20 @@ if {[file exists ~/.tcl/init.tcl]} {source ~/.tcl/init.tcl}
 #
 set build_dir             ./build
 set build_type            Release
-set build_libname_file    libname.txt ;# set in CMakeLists.txt
+
+# Set/used in CMakeLists.txt, do not change
+set build_libname_file    libname.txt
 set build_version_file    version.h
 set build_version_var     PROJECT_VERSION
+
+# modules are nested one level deep, e.g. act/mymodule
 set project_module_root   act
 set project_module_name   http
+
+# build artifacts (incl. binaries) go in $build_dir/$project_package
 set project_package       act_http
+
+# ----------------------------------------------------------------------------
 
 # default settings
 array set opts {
@@ -73,7 +81,6 @@ proc usage {} {
 }
 
 if {$::opts(help)} {usage; exit 0}
-if {$argc == 0} {usage; exit 1}
 
 proc verbose {msg} {if {$::opts(verbose)} {puts $msg}}
 
@@ -172,6 +179,51 @@ proc util::make_module {source target} {
     append_binary $source $target
 }
 
+proc util::make_zip_module {srcdir target} {
+    global build_dir
+    global project_package
+    if {![file exists [file join $srcdir main.tcl]]} {
+        # if no main.tcl exists in srcdir, provide a generic shared
+        # library loader
+        set f [open [file join $srcdir main.tcl] w]
+        puts $f "set lib_name $project_package"
+        puts $f {
+            set root [file join [zipfs root] $lib_name]
+            foreach lib [glob $root/*[info sharedlibextension]] {
+                load $lib
+            }
+        }
+        close $f
+    }
+    set zip [file tempfile tmp_name]
+    close $zip
+    zipfs mkzip $zip $srcdir $srcdir
+
+    # write loader script, which mounts the zipfs archive and sources
+    # main.tcl
+    set out [open $target w]
+    puts $out "set project_package $project_package"
+    puts $out {
+        set path [info script]
+        set f [open $path rb]
+        while {![eof $f]} {
+            set c [read $f 1]
+            if {$c eq "\032"} { break }
+        }
+        set tmp [file tempfile tmp_name]
+        fconfigure $zip -translation binary
+        fcopy $f $zip
+        close $zip
+        close $f
+
+        zipfs mount $project_package $zip_name
+        source [zipfs root]$project_package/main.tcl
+    }
+    close $out
+    append_binary $zip $target
+    file delete $zip
+}
+
 proc util::module_filename {} {
     global build_dir
     global build_version_file
@@ -210,13 +262,15 @@ proc util::find_lib {} {
 }
 
 proc util::create_module {} {
-    # after successful cmake build, create the tcl module file
+    # After successful cmake build, create the tcl module file.
+    # If zipfs is available,
     global build_dir
     global build_libname_file
     global build_version_file
     global build_version_var
     global project_module_root
     global project_module_name
+    global project_package
 
     # read version (output by cmake)
     set vsn [util::get_define $build_dir/$build_version_file $build_version_var]
@@ -234,7 +288,13 @@ proc util::create_module {} {
     set module_path $build_dir/$project_module_root/$module_filename
     if {[file exists $module_path]} {file delete $module_path}
 
-    util::make_module $lib_path $module_path
+    # If zipfs is available, make a zip archive. If not, make a loader
+    # which only loads a single binary.
+    if {[catch {zipfs root}]} {
+        util::make_module $lib_path $module_path
+    } else {
+        util::make_zip_module $build_dir/$project_package $module_path
+    }
 }
 
 # ----------------------------------------------------------------------------
@@ -499,5 +559,5 @@ if {[llength $commands] > 0} {
         default {usage; exit 1}
     }
 } else {
-    usage; exit 1
+    usage ;# no exit, to allow loading from interactive session
 }
