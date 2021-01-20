@@ -71,6 +71,7 @@ proc usage {} {
     puts "Commands:"
     puts "    cmake clean         Remove ./build directory."
     puts "    cmake build         Perform release build."
+    puts "    init                Create initial project.tcl file."
     puts "    system dir package  Print package installation path, if writable."
     puts "    system dir module   Print module installation path, if writable."
     puts "    system install package Copy built package to system's Tcl lib directory."
@@ -547,6 +548,20 @@ proc system::main {words} {
     }
 }
 
+namespace eval misc {}
+
+proc misc::init {} {
+    set project_file [file join [pwd] project.tcl]
+    if {[file exists $project_file]} {
+        puts "$project_file already exists."
+        exit 1
+    }
+    set f [open $project_file w]
+    puts $f {set project_module_root   myroot}
+    puts $f {set project_module_name   myname}
+    puts $f {set project_package       myroot_myname}
+}
+
 # require git
 verbose {Checking output of 'git version'... }
 util::exit_unless_git
@@ -560,6 +575,7 @@ verbose "Options:"; if {$::opts(verbose)} {parray opts}
 if {[llength $commands] > 0} {
     switch [lindex $commands 0] {
         "cmake"  {cmake::main $commands}
+        "init"   {misc::init}
         "system" {system::main $commands}
         "vcpkg"  {vcpkg::main $commands}
         default {usage; exit 1}
