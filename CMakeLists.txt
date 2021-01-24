@@ -15,11 +15,6 @@ project(tcl_http
   DESCRIPTION "Tcl extension providing HTTP server"
   LANGUAGES CXX)
 
-set(BASE_INSTALL_DIR ${CMAKE_SOURCE_DIR}/install)
-if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
-    set(CMAKE_INSTALL_PREFIX "${BASE_INSTALL_DIR}" CACHE PATH "..." FORCE)
-endif()
-
 add_library(http_tcl SHARED
     "include/http_tcl/http_tcl.h"
     "act_http/pkgIndex.tcl"
@@ -44,14 +39,14 @@ add_compile_definitions(USE_TCL_STUBS)
 find_package(Boost 1.75.0 REQUIRED)
 
 if(MSVC)
-add_compile_definitions(WINVER=0x0A00 _WIN32_WINNT=0x0A00)
+    add_compile_definitions(WINVER=0x0A00 _WIN32_WINNT=0x0A00)
 endif()
 
 find_path(TCL_INCLUDE_DIR tcl.h REQUIRED
-    HINTS 
-    ${CMAKE_SOURCE_DIR}/../tcl/generic 
-    ${CMAKE_SOURCE_DIR}/../tcl86/generic 
-    ${CMAKE_SOURCE_DIR}/../tcl87/generic 
+    HINTS
+    ${CMAKE_SOURCE_DIR}/../tcl/generic
+    ${CMAKE_SOURCE_DIR}/../tcl86/generic
+    ${CMAKE_SOURCE_DIR}/../tcl87/generic
     /usr/local/tcl86/include /usr/local/tcl87/include)
 find_library(TCL_LIBRARY REQUIRED NAMES tcl86 tcl86t libtcl8.6.so libtcl8.7.so
     HINTS ${TCL_INCLUDE_DIR}/../unix ${TCL_INCLUDE_DIR}/../win ${TCL_INCLUDE_DIR}/../macosx
