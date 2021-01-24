@@ -16,7 +16,7 @@ Bonus:
 ## Usage
 
 ```tcl
-% package require act::http 
+% package require act::http
 % namespace import act::*
 % http configure -host 127.0.0.1 -port 1234 -get {list 200 "hello, world" "text/plain"}
 % http run
@@ -59,10 +59,10 @@ Their meaning and function are described below.
 ```sh
 $ ./act vcpkg setup
 $ ./act vcpkg install
-$ ./act cmake release
-$ ./act system install module  
+$ ./act cmake build
+$ ./act system install module
 or
-$ ./act system install package 
+$ ./act system install package
 ```
 
 ### Tcl
@@ -174,16 +174,12 @@ installed anywhere else on your system.
 Once `vcpkg` is set up, building and installing is as easy as:
 
 ```sh
-$ ./act cmake release
+$ ./act cmake build
 $ ./act system install module
 or
 $ ./act system install package
 ```
 
-If you prefer not to install the built extension into your system library
-directory, you can refer to the `install` directory created as part of the
-`act cmake release` step. It will contain the package directory you need to
-place on your `TCLLIBPATH` to use the extension.
 
 ### Verifying
 
