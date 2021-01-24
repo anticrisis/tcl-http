@@ -171,7 +171,6 @@ percent_encode(std::string_view in)
 std::optional<std::string>
 percent_decode(std::string_view in)
 {
-  // argument must be a string& due to use of in.substr()
   std::ostringstream os;
   std::string        temp_s{ "XX" };
 
