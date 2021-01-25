@@ -255,10 +255,12 @@ proc util::find_lib {} {
     set libname [read_file $build_dir/$build_libname_file]
 
     set path $build_dir/$libname
+    verbose "find_lib: Checking $path"
     if {[file exists $path]} {
         return $path
     } else {
         set path $build_dir/$build_type/$libname
+        verbose "find_lib: Checking $path"
         if {[file exists $path]} {
             return $path
         } else {
@@ -408,6 +410,18 @@ proc vcpkg::main {words} {
 
 namespace eval cmake {}
 
+proc cmake::strip {} {
+    global build_dir
+
+    foreach f [glob -nocomplain -directory $build_dir *[info sharedlibextension]] {
+        exec -- strip $f
+    }
+
+    foreach f [glob -nocomplain -directory $build_dir **/*[info sharedlibextension]] {
+        exec -- strip $f
+    }
+}
+
 proc cmake::clean {} {
     global build_dir
     file delete -force $build_dir
@@ -418,7 +432,9 @@ proc cmake::build {} {
     global build_type
 
     exec -- cmake -S . -B $build_dir -DCMAKE_BUILD_TYPE=$build_type
-    exec -- cmake --build $build_dir
+    exec -- cmake --build $build_dir --config $build_type
+
+    strip
 
     # create Tcl module from built library
     util::create_module
