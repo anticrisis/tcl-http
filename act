@@ -213,12 +213,13 @@ proc util::make_zip_module {srcdir target} {
     puts $out {
         set path [info script]
         set f [open $path rb]
+        chan configure $f -translation binary -eofchar "\032"
         while {![eof $f]} {
-            set c [read $f 1]
-            if {$c eq "\032"} { break }
+            read $f
         }
+        chan configure $f -eofchar ""
         set tmp [file tempfile tmp_name]
-        fconfigure $tmp -translation binary
+        chan configure $tmp -translation binary
         fcopy $f $tmp
         close $tmp
         close $f
