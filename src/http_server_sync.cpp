@@ -39,6 +39,9 @@ namespace http  = beast::http;          // from <boost/beast/http.hpp>
 namespace net   = boost::asio;          // from <boost/asio.hpp>
 using tcp       = boost::asio::ip::tcp; // from <boost/asio/ip/tcp.hpp>
 
+// anticrisis: add thread_count
+std::atomic<int> thread_count;
+
 //------------------------------------------------------------------------------
 
 // This function produces an HTTP response for the given
@@ -281,6 +284,10 @@ do_session(tcp::socket& socket, alt_handler* alt_handler)
   bool              close = false;
   beast::error_code ec;
 
+  // anticrisis: increment thread count, decrement on exit
+  thread_count++;
+  auto _ = finally([] { thread_count--; });
+
   // This buffer is required to persist across reads
   beast::flat_buffer buffer;
 
@@ -320,10 +327,15 @@ do_session(tcp::socket& socket, alt_handler* alt_handler)
 
 // anticrisis: change main to run; remove doc_root
 int
-run(std::string_view address_, unsigned short port, alt_handler* alt_handler)
+run(std::string_view address_,
+    unsigned short   port,
+    alt_handler*     alt_handler,
+    int              max_connections)
 {
   try
   {
+    thread_count = 0;
+
     auto const address = net::ip::make_address(address_);
 
     // The io_context is required for all I/O
@@ -333,6 +345,13 @@ run(std::string_view address_, unsigned short port, alt_handler* alt_handler)
     tcp::acceptor acceptor{ ioc, { address, port } };
     for (;;)
     {
+      // anticrisis busy wait until thread_count is in range - will probably
+      // cause client and server errors
+      while (thread_count >= max_connections)
+      {
+        std::this_thread::yield();
+      }
+
       // This will receive the new connection
       tcp::socket socket{ ioc };
 

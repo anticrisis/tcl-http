@@ -63,6 +63,7 @@ struct config_t
   TclObj host{};
   TclObj port{};
   TclObj exit_target{};
+  TclObj max_connections{};
 
   void
   init();
@@ -76,19 +77,20 @@ config_t::init()
     return Tcl_NewStringObj("", 0);
   };
 
-  options     = empty_string();
-  head        = empty_string();
-  get         = empty_string();
-  post        = empty_string();
-  put         = empty_string();
-  delete_     = empty_string();
-  req_target  = empty_string();
-  req_body    = empty_string();
-  req_headers = empty_string();
-  host        = empty_string();
-  port        = empty_string();
-  exit_target = empty_string();
-  valid       = true;
+  options         = empty_string();
+  head            = empty_string();
+  get             = empty_string();
+  post            = empty_string();
+  put             = empty_string();
+  delete_         = empty_string();
+  req_target      = empty_string();
+  req_body        = empty_string();
+  req_headers     = empty_string();
+  host            = empty_string();
+  port            = empty_string();
+  exit_target     = empty_string();
+  max_connections = empty_string();
+  valid           = true;
 }
 
 struct tcl_handler final : public http_tcl::thread_safe_handler<tcl_handler>
@@ -468,6 +470,7 @@ configure(ClientData cd, Tcl_Interp* i, int objc, Tcl_Obj* const objv[])
                                    "-port",
                                    "-options",
                                    "-exittarget",
+                                   "-maxconnections",
                                    nullptr };
 
   auto  cd_ptr    = static_cast<client_data*>(cd);
@@ -495,6 +498,7 @@ configure(ClientData cd, Tcl_Interp* i, int objc, Tcl_Obj* const objv[])
     case 9: objv.push_back(my_config.port.value()); break;
     case 10: objv.push_back(my_config.options.value()); break;
     case 11: objv.push_back(my_config.exit_target.value()); break;
+    case 12: objv.push_back(my_config.max_connections.value()); break;
     default: return TCL_ERROR;
     }
     auto list = Tcl_NewListObj(objv.size(), objv.data());
@@ -513,7 +517,7 @@ configure(ClientData cd, Tcl_Interp* i, int objc, Tcl_Obj* const objv[])
       "?-post postCmd? ?-put "
       "putCmd? ?-delete delCmd? ?-options optCmd? ?-reqtargetvariable varName? "
       "?-reqbodyvariable varName? ?-reqheadersvariable varName? ?-exittarget "
-      "target?");
+      "target? ?-maxconnections n?");
     return TCL_ERROR;
   }
 
@@ -546,6 +550,8 @@ configure(ClientData cd, Tcl_Interp* i, int objc, Tcl_Obj* const objv[])
     objv.push_back(my_config.req_headers.value());
     objv.push_back(Tcl_NewStringObj("-exittarget", -1));
     objv.push_back(my_config.exit_target.value());
+    objv.push_back(Tcl_NewStringObj("-maxconnections", -1));
+    objv.push_back(my_config.max_connections.value());
 
     auto list = Tcl_NewListObj(objv.size(), objv.data());
     Tcl_SetObjResult(i, list);
@@ -574,6 +580,7 @@ configure(ClientData cd, Tcl_Interp* i, int objc, Tcl_Obj* const objv[])
     case 9: my_config.port = obj; break;
     case 10: my_config.options = obj; break;
     case 11: my_config.exit_target = obj; break;
+    case 12: my_config.max_connections = obj; break;
     default: return TCL_ERROR;
     }
   }
@@ -653,13 +660,23 @@ run(ClientData cd, Tcl_Interp* i, int objc, Tcl_Obj* const objv[])
 
   auto host = Tcl_GetString(my_config.host.value());
   int  port{ 0 };
+  int  max_connections{ 0 };
   if (Tcl_GetIntFromObj(i, my_config.port.value(), &port) != TCL_OK)
   {
     Tcl_SetObjResult(i, Tcl_NewStringObj("Invalid port number.", -1));
     return TCL_ERROR;
   }
 
-  http_tcl::run(host, port, &cd_ptr->handler);
+  // if bad value or not set, ignore the option and use server's default
+  if (Tcl_GetIntFromObj(i, my_config.max_connections.value(), &max_connections)
+      != TCL_OK)
+    max_connections = 0;
+
+  if (max_connections)
+    http_tcl::run(host, port, &cd_ptr->handler, max_connections);
+  else
+    http_tcl::run(host, port, &cd_ptr->handler);
+
   return TCL_OK;
 }
 
@@ -758,7 +775,7 @@ extern "C"
   DllExport int
   Act_http_Unload(Tcl_Interp* i, int flags)
   {
-    auto ns = Tcl_FindNamespace(i, theNamespaceName, nullptr, 0);
+    auto ns     = Tcl_FindNamespace(i, theNamespaceName, nullptr, 0);
     auto url_ns = Tcl_CreateNamespace(i, theUrlNamespaceName, nullptr, nullptr);
     Tcl_DeleteNamespace(ns);
     Tcl_DeleteNamespace(url_ns);

@@ -32,6 +32,7 @@ configuration. These are the options:
 - Host configuration
   - `-host`
   - `-port`
+  - `-maxconnections` : default is 250
 - HTTP handlers
   - `-head`
   - `-get`
@@ -53,6 +54,13 @@ See the `examples` directory for examples.
 
 ## Building
 
+Use your system's package manager to install `cmake` and a C++ compiler. For
+example,
+
+```sh
+$ sudo apt install cmake build-essential
+```
+
 After `git clone`, these four commands will build and install this extension.
 Their meaning and function are described below.
 
@@ -71,10 +79,16 @@ Your Tcl distribution must include `tcl.h` and the `tclstub` library
 appropriate to your system. For example, the ActiveTcl distribution for
 Windows includes these components.
 
+On linux:
+
+```sh
+$ sudo apt install tcl8.6-dev
+```
+
 Alternatively, you can build Tcl from source yourself to generate the stubs
 library.
 
-Important: this extension's cmake-based build system relies on being able to
+IMPORTANT: this extension's cmake-based build system relies on being able to
 find `tcl.h` and the `tclstub` library on your path, or in certain typical
 places. See the `find_path` and `find_library` lines in `CMakeLists.txt` for
 details.
@@ -113,6 +127,21 @@ source ~/.tcl/init.tcl
 If I was dealing with Tcl-version-specific modules and packages, I would adjust
 `init.tcl` accordingly, to select the appropriate paths based on the running tclsh
 version.
+
+#### During Development
+
+In order to load the extension from your build directory rather than your
+system's install location, you may need to set the TCL_8_6_TM_PATH, like this:
+
+```sh
+$ export TCL_8_6_TM_PATH='build'
+```
+
+or 
+
+```powershell
+PS> $Env:TCL_8_6_TM_PATH='build'
+```
 
 ### C++
 
