@@ -312,6 +312,35 @@ proc util::create_module {} {
     }
 }
 
+proc util::exec_tail {args} {
+    # On platforms with `kill`, we can print the output produced by a
+    # process while it's running. Uses globals and vwait, so only one
+    # at a time.
+    if {[util::is_windows]} {
+        exec {*}$args
+    } else {
+        set ::done 0
+        set ::tmp [file tempfile ::tmp_name]
+        set ::pid [exec {*}$args 2>@ $::tmp &]
+
+        chan event $::tmp readable {
+            set l [chan gets $::tmp]
+            if {![chan eof $::tmp]} {
+                puts $l
+            }
+            if {[catch {exec -- kill -0 $::pid}]} {
+                set ::done 1
+            }
+        }
+        vwait ::done
+        chan close $::tmp
+        file delete $::tmp_name
+        unset ::done
+        unset ::tmp
+        unset ::tmp_name
+    }
+}
+
 # ----------------------------------------------------------------------------
 
 namespace eval vcpkg {
@@ -329,7 +358,7 @@ proc vcpkg::clone {} {
         puts "git clone $::opts(vcpkg_repo) $vcpkg_dir"
     } else {
         puts "Cloning vcpkg into $vcpkg_dir..."
-        set res [exec -ignorestderr git clone $::opts(vcpkg_repo) $vcpkg_dir 2>@1]
+        set res [util::exec_tail -ignorestderr git clone $::opts(vcpkg_repo) $vcpkg_dir]
         puts $res
     }
 }
@@ -348,7 +377,7 @@ proc vcpkg::bootstrap {} {
     } else {
         puts "Executing $bootstrap..."
         puts "Compiling may take several minutes with no output until complete..."
-        set res [exec -ignorestderr $bootstrap 2>@1]
+        set res [util::exec_tail -ignorestderr $bootstrap]
         puts $res
     }
 }
@@ -368,10 +397,10 @@ proc vcpkg::update {} {
         puts "$cmd update"
     } else {
         puts "Performing git pull on $vcpkg_dir"
-        set res [exec git -C $vcpkg_dir pull]
+        set res [util::exec_tail git -C $vcpkg_dir pull]
         puts $res
         puts "Performing vcpkg update"
-        set res [exec -ignorestderr $cmd update 2>@1]
+        set res [util::exec_tail -ignorestderr $cmd update]
         puts $res
     }
 }
@@ -396,7 +425,7 @@ proc vcpkg::install {} {
         puts "    $cmd install $packages"
         puts ""
         puts "Fetching and compiling..."
-        set res [exec -ignorestderr $cmd install {*}$packages 2>@1]
+        set res [util::exec_tail -ignorestderr $cmd install {*}$packages]
         puts $res
     }
 }
@@ -437,9 +466,8 @@ proc cmake::build {} {
     global build_dir
     global build_type
 
-    exec -- cmake -S . -B $build_dir -DCMAKE_BUILD_TYPE=$build_type
-    exec -- cmake --build $build_dir --config $build_type
-
+    util::exec_tail -- cmake -S . -B $build_dir -DCMAKE_BUILD_TYPE=$build_type
+    util::exec_tail -- cmake --build $build_dir --config $build_type
     strip
 
     # create Tcl module from built library
