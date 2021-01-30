@@ -153,30 +153,33 @@ proc util::append_binary {source target} {
     # append the binary file $source to the end of $target, separated by SUB (^Z)
 
     set in  [open $source rb]
-    set data [read $in]
-    close $in
-
     set out [open $target ab]
+    chan configure $in -translation binary
+    chan configure $out -translation binary
     puts -nonewline $out \032
-    puts -nonewline $out $data
+    chan copy $in $out
     close $out
+    close $in
 }
 
 proc util::make_module {source target} {
     # make a module which will load $source when it is sourced
     # TODO: tmp file is locked open, is there a way to delete it on exit?
     global project_package
+    verbose "Making non-vfs module..."
     set out [open $target w]
     puts $out "set project_package $project_package"
     puts $out {
         set path [info script]
         set f [open $path rb]
+        chan configure $f -translation binary -eofchar "\032"
         while {![eof $f]} {
-            set c [read $f 1]
-            if {$c eq "\032"} { break }
+            read $f
         }
+        chan configure $f -eofchar ""
+        read $f 1
         set tmp [file tempfile tmp_name]
-        fconfigure $tmp -translation binary
+        chan configure $tmp -translation binary
         fcopy $f $tmp
         close $tmp
         close $f
@@ -189,6 +192,7 @@ proc util::make_module {source target} {
 proc util::make_zip_module {srcdir target} {
     global build_dir
     global project_package
+    verbose "Making vfs module..."
     if {![file exists [file join $srcdir main.tcl]]} {
         # if no main.tcl exists in srcdir, provide a generic shared
         # library loader
@@ -218,6 +222,7 @@ proc util::make_zip_module {srcdir target} {
             read $f
         }
         chan configure $f -eofchar ""
+        read $f 1
         set tmp [file tempfile tmp_name]
         chan configure $tmp -translation binary
         fcopy $f $tmp
