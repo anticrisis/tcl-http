@@ -1,0 +1,3 @@
+.out        build/hello-world-0.1.tm
+.load       act_http = build/, build/Release
+.source     examples/hello_world.tcl

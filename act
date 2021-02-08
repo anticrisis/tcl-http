@@ -4,6 +4,20 @@ command -v tclsh > /dev/null 2>&1 || { echo "Can't find tclsh on your path. Cons
 exec tclsh "$0" ${1+"$@"}
 
 #
+# act
+#
+# A Tcl build and packaging system.
+# https://github.com/anticrisis/tcl-act
+#
+# Copyright 2021, Anticrisis <https://github.com/anticrisis>
+# Licensed under BSD-2-Clause
+#
+# Version 0.1 - 2021-02-01
+#
+
+# ----------------------------------------------------------------------------
+
+#
 # source user's init script, if present, to pick up user-defined module and
 # package paths
 #
@@ -12,23 +26,8 @@ if {[file exists ~/.tcl/init.tcl]} {source ~/.tcl/init.tcl}
 #
 # project-specific configuration
 #
-# To customize, add them to ./project.tcl
-#
 set build_dir             ./build
 set build_type            Release
-
-# Set/used in CMakeLists.txt, do not change
-set build_libname_file    libname.txt
-set build_version_file    version.h
-set build_version_var     PROJECT_VERSION
-
-# modules are nested one level deep, e.g. myroot/mymodule
-set project_module_root   myroot
-set project_module_name   mymodule
-
-# build artifacts (incl. binaries) go in $build_dir/$project_package
-# this directory is used in CMakeLists.txt
-set project_package       myroot_mymodule
 
 # get project-specific overrides
 if {[file exists ./project.tcl]} {source ./project.tcl}
@@ -40,8 +39,26 @@ array set opts {
     help         0
     verbose      0
     vcpkg_repo   https://github.com/microsoft/vcpkg
+    vcpkg_dir    ""
     dry_run      0
     packages     "packages.txt"
+    triplet      ""
+}
+
+# Try to be clever finding an existing vcpkg directory in typical
+# locations
+set paths {.. ../.. ../../.. .}
+foreach parent $paths {
+    set path [file normalize [file join [pwd] {*}$parent vcpkg]]
+    if {[file exists $path]} {
+        set opts(vcpkg_dir) $path
+        break
+    }
+}
+
+# Otherwise, set to my parent directory
+if {$opts(vcpkg_dir) eq ""} {
+    set opts(vcpkg_dir) [file normalize [file join [pwd] ../vcpkg]]
 }
 
 set commands {}
@@ -52,12 +69,11 @@ for {set i 0} {$i < $argc} {incr i} {
     switch [lindex $argv $i] {
         "-h"           {set opts(help) 1}
         "-v"           {set opts(verbose) 1}
-        "-vcpkg-repo"  -
+        "--vcpkg"      {set opts(vcpkg_dir)  [lindex $argv [incr i]]}
         "--vcpkg-repo" {set opts(vcpkg_repo) [lindex $argv [incr i]]}
-        "-dry-run"     -
         "--dry-run"    {set opts(dry_run) 1}
-        "-packages"    -
         "--packages"   {set opts(packages) [lindex $argv [incr i]]}
+        "--triplet"    {set opts(triplet)  [lindex $argv [incr i]]}
         default {
             lappend commands [lindex $argv $i]
         }
@@ -67,27 +83,27 @@ for {set i 0} {$i < $argc} {incr i} {
 proc usage {} {
     set cmd_name [file tail $::argv0]
     puts [subst -nocommands \
-         {Usage:    $cmd_name [-v] [--dry-run] [--vcpkg-repo] [--packages file] commands...}]
+              {Usage:    $cmd_name [-v] [--dry-run] [--vcpkg] [--vcpkg-repo] [--packages file] commands...}]
     puts "Commands:"
-    puts "    cmake clean         Remove ./build directory."
-    puts "    cmake build         Perform release build."
-    puts "    init                Create initial project.tcl file."
-    puts "    system dir package  Print package installation path, if writable."
-    puts "    system dir module   Print module installation path, if writable."
-    puts "    system install package Copy built package to system's Tcl lib directory."
-    puts "    system install module  Copy built module to system's Tcl module directory."
-    puts "    vcpkg bootstrap     Perform one-time post-clone setup."
-    puts "    vcpkg clone         Clone vcpkg repository."
-    puts "    vcpkg install       Install required packages from package file."
-    puts "    vcpkg setup         Perform initial setup: clone and bootstrap."
-    puts "    vcpkg update        Perform git pull."
+    puts "    clean                     Remove ./build directory."
+    puts "    build {manifest}          Perform release build using manifest file."
+    puts "    install {manifest}        Copy built module to system's Tcl module directory."
+    puts "    system dir                Print module installation path, if writable."
     puts ""
-    puts "Command options: a single hypen may also be used to prefix extended options."
-    puts "                 For example, -dry-run is the same as --dry-run."
+    puts "    vcpkg install             Install required packages from packages.txt file."
+    puts "    vcpkg setup               Perform initial setup: git clone and bootstrap."
+    puts "    vcpkg update              Perform git pull on vcpkg."
     puts ""
+    puts "Flags:"
+    puts "    --vcpkg                   Location of vcpkg directory"
+    puts "    --vcpkg-repo              URL to git clone"
+    puts "    --dry-run                 Do nothing, output commands"
+    puts "    --packages                Alternate packages.txt file"
+    puts "    --triplet                 Set VCPKG_DEFAULT_TRIPLET"
 }
 
 if {$::opts(help)} {usage; exit 0}
+
 
 proc verbose {msg} {if {$::opts(verbose)} {puts $msg}}
 
@@ -108,7 +124,6 @@ proc util::is_windows {} {
 
 proc util::exit_unless_compiler {} {
     if {[util::is_windows]} {
-        # It would be much easier if cl had a 'version' command
         if {[catch {exec -ignorestderr -- cl -help 2>@1}]} {
             puts "Could not find Microsoft Visual C++ Build Tools."
             puts "See https://docs.microsoft.com/en-us/cpp/build/building-on-the-command-line?view=msvc-160"
@@ -136,19 +151,6 @@ proc util::read_lines {filename} {
     split $buf \n
 }
 
-proc util::get_define {filename define} {
-    # return the string value after '#define $define' in $filename
-    set in [read_lines $filename]
-    foreach line $in {
-        set r [regexp -all -inline {\S+} $line]
-        if {[llength $r] < 3} { continue }
-        if { [expr { [lindex $r 0] eq "#define" }] && \
-             [expr { [lindex $r 1] eq $define   }]} {
-            return [regexp -inline {[^"]+} [lindex $r 2]]
-        }
-    }
-}
-
 proc util::append_binary {source target} {
     # append the binary file $source to the end of $target, separated by SUB (^Z)
 
@@ -162,222 +164,400 @@ proc util::append_binary {source target} {
     close $in
 }
 
-proc util::make_module {source target} {
-    # make a module which will load $source when it is sourced
-    # TODO: tmp file is locked open, is there a way to delete it on exit?
-    global project_package
-    verbose "Making non-vfs module..."
-    set out [open $target w]
-    puts $out "set project_package $project_package"
-    puts $out {
-        set path [info script]
-        set f [open $path rb]
-        chan configure $f -translation binary -eofchar "\032"
-        while {![eof $f]} {
-            read $f
+proc util::find_lib {name dirs} {
+    # Attempt to find a library called 'name.so' or 'libname.so' etc,
+    # in any of the directories in dirs. Returns empty string on
+    # failure.
+
+    set filename ""
+    set ext [info sharedlibextension]
+    foreach lib_dir $dirs {
+        if {$filename ne ""} {break}
+        if {[file exists [file join $lib_dir $name$ext]]} {
+            set filename [file join $lib_dir $name$ext]
+        } elseif {[file exists [file join $lib_dir "lib${name}${ext}"]]} {
+            set filename       [file join $lib_dir "lib${name}${ext}"]
         }
-        chan configure $f -eofchar ""
-        read $f 1
-        set tmp [file tempfile tmp_name]
-        chan configure $tmp -translation binary
-        fcopy $f $tmp
-        close $tmp
-        close $f
-        load $tmp_name $project_package
     }
-    close $out
-    append_binary $source $target
+    return $filename
 }
 
-proc util::make_zip_module {srcdir target} {
-    global build_dir
-    global project_package
-    verbose "Making vfs module..."
-    if {![file exists [file join $srcdir main.tcl]]} {
-        # if no main.tcl exists in srcdir, provide a generic shared
-        # library loader
-        set f [open [file join $srcdir main.tcl] w]
-        puts $f "set lib_name $project_package"
-        puts $f {
-            set root [file join [zipfs root] $lib_name]
-            foreach lib [glob $root/*[info sharedlibextension]] {
-                load $lib
+proc util::split1 {sep str} {
+    # Unlike split, this will only split on the first occurrence of
+    # sep. It returns a two-element list.
+    set i [string first $sep $str]
+    set l [string range $str 0 $i-1]; set r [string range $str $i+1 end]
+    list  [string trim $l] [string trim $r]
+}
+
+proc util::read_manifest {manifest} {
+    set lines [read_lines $manifest]
+
+    set md [dict create]
+    foreach l $lines {
+        if {$l eq ""} {continue}
+        if {[lindex [string trimleft $l] 0] eq "#"} {continue}
+        foreach {k v} [split1 " " $l] {
+            dict lappend md [string tolower $k] $v
+        }
+    }
+    return $md
+}
+
+proc util::make_bundle {manifest} {
+    # make a sourceable self-extracting archive from manifest
+
+    if {$::opts(dry_run)} {return}
+
+    set md [read_manifest $manifest]
+
+    # Create load script for module. Windows .bat adaptor at the end of this proc.
+    # Include a sh executable header so the bundle can be invoked directly if desired.
+    set sh_header "#!/bin/sh\n# "
+    set backslash [format %c 92]
+    append sh_header $backslash
+    append sh_header "\n"
+    append sh_header {command -v tclsh > /dev/null 2>&1 || { echo "Can't find tclsh on your path."; exit 1;} # }
+    append sh_header $backslash
+    append sh_header "\n"
+    append sh_header {exec tclsh "$0" ${1+"$@"}}
+
+    # The bootstrap script
+    set boot {proc extract {f len} {
+chan configure $f -blocking 1 -translation binary
+set raw [read $f $len]
+set tmp [file tempfile tmpname]
+chan configure $tmp -translation binary
+chan puts -nonewline $tmp [zlib decompress $raw]
+close $tmp; chan read $f 1
+return $tmpname}
+set path [info script]; set f [open $path rb]
+chan configure $f -translation binary -eofchar "\032"
+while {![eof $f]} {read $f}; chan configure $f -eofchar ""
+read $f 1; chan configure $f -translation lf
+set len [chan gets $f]; set loadername [extract $f $len]
+source $loadername; file delete $loadername; loader $f}
+
+    # The actual load script
+    set script {
+        namespace eval ::act {
+            set ::act::assets   [dict create]
+            set ::act::tmpfiles {}
+
+            proc cleanup {} {
+                dict for {name tmpname} $::act::assets {file delete $tmpname}
+                foreach f $::act::tmpfiles {catch {file delete $f}}
             }
         }
-        close $f
-    }
-    set zip [file tempfile]
-    close $zip
-    zipfs mkzip $zip $srcdir $srcdir
 
-    # write loader script, which mounts the zipfs archive and sources
-    # main.tcl
-    set out [open $target w]
-    puts $out "set project_package $project_package"
-    puts $out {
-        set path [info script]
-        set f [open $path rb]
-        chan configure $f -translation binary -eofchar "\032"
-        while {![eof $f]} {
-            read $f
+        proc split1 {sep str} {
+            set i [string first $sep $str]
+            set l [string range $str 0 $i-1]; set r [string range $str $i+1 end]
+            list  [string trim $l] [string trim $r]
         }
-        chan configure $f -eofchar ""
-        read $f 1
-        set tmp [file tempfile tmp_name]
-        chan configure $tmp -translation binary
-        fcopy $f $tmp
-        close $tmp
-        close $f
 
-        zipfs mount $project_package $tmp_name
-        source [zipfs root]$project_package/main.tcl
+        proc loader {f} {
+            # set up state
+            set source_files {}
+            set load_files   {}
+            set asset_files  {}
+            set packages     [dict create]
+
+            while {![chan eof $f]} {
+                chan configure $f -translation lf
+                set line [chan gets $f]
+                if {$line eq ""} {continue}
+                foreach {k v} [split1 " " $line] {
+                    set type [string tolower $k]
+                    set val  $v
+                }
+                switch -- $type {
+                    .source {
+                        set name ""
+                        set len  $val
+                    }
+                    .load {
+                        foreach {k v} [split1 = $val] {
+                            set name $k
+                            set len  $v
+                        }
+                    }
+                    .vsn {
+                        foreach {pkg vsn} [split1 = $val] {
+                            dict set packages $pkg version $vsn
+                        }
+                        continue
+                    }
+                    .asset {
+                        foreach {k v} [split1 = $val] {
+                            set name $k
+                            set len  $v
+                        }
+                    }
+                    default {
+                        set name ""
+                        set len  $val
+                    }}
+
+                # read bytes to temp file
+                chan configure $f -translation binary
+                set tmp [file tempfile rawtempfile]
+                chan configure $tmp -translation binary
+                chan copy $f $tmp -size $len
+                close $tmp
+
+                # read file into memory
+                set raw [open $rawtempfile rb]
+                chan configure $raw -translation binary
+                set rawdata [read $raw]
+                close $raw
+                file delete $rawtempfile
+
+                # decompress to new temp file
+                set tmp [file tempfile tmpname]
+                chan configure $tmp -translation binary
+                chan puts -nonewline $tmp [zlib decompress $rawdata]
+                close $tmp
+
+                # skip extra byte
+                chan read $f 1
+
+                # save file info to state
+                switch -- $type {
+                    .source  {lappend source_files $tmpname}
+                    .load    {lappend load_files   [list $name $tmpname]}
+                    .asset   {lappend asset_files  [list $name $tmpname]}
+                    .vsn     {}
+                    default  {
+                        if {[dict exists $packages $type files]} {
+                            set files [dict get $packages $type files]
+                        } else {
+                            set files {}
+                        }
+                        lappend files $tmpname
+                        dict set packages $type files $files
+                    }}}
+
+            # done reading, close file
+            close $f
+
+            # now load everything: first assets, then all binaries via
+            # load, then packages, then non-package sources.
+            foreach val $asset_files {
+                set asset_name  [lindex $val 0]
+                set filename    [lindex $val 1]
+
+                dict set ::act::assets $asset_name $filename
+            }
+
+            foreach val $load_files {
+                set pkg_name  [lindex $val 0]
+                set filename  [lindex $val 1]
+
+                uplevel #0 [list load $filename $pkg_name]
+                lappend ::act::tmpfiles $filename
+            }
+
+            # emit package ifneeded for each package we loaded
+            dict for {pkg data} $packages {
+                if {![dict exists $data files]} {continue}
+                if {![dict exists $data version]} {
+                    puts "ERROR: missing .vsn for package $pkg"
+                    exit 1
+                }
+                set loads [list uplevel #0 [list foreach f [list {*}[dict get $data files]] {source $f}]]
+
+                package ifneeded $pkg [dict get $data version] $loads
+                lappend ::act::tmpfiles {*}[dict get $data files]
+            }
+
+            # load non-package sources
+            foreach f $source_files {
+                lappend ::act::tmpfiles $f
+                uplevel #0 [list source $f]
+            }
+        } ;# loader
+    } ;# script
+
+    # scan manifest to find the target filename
+    set target ""
+    dict for {type val} $md {
+        switch -- $type {
+            .out {
+                set target $val
+            }
+        }}
+
+    if {$target eq ""} {
+        puts "ERROR: manifest missing /out value."
+        exit 1
     }
-    close $out
-    append_binary $zip $target
-    file delete $zip
-}
 
-proc util::module_filename {} {
-    global build_dir
-    global build_version_file
-    global build_version_var
-    global project_module_name
+    # create module, write the loader script
+    set f [open $target wb]
+    chan configure $f -translation lf
+    chan puts $f $sh_header
 
-    # read version (output by cmake)
-    set vsn [util::get_define $build_dir/$build_version_file $build_version_var]
+    # place bootstrap script
+    chan puts $f $boot
+    chan configure $f -translation binary
+    chan puts -nonewline $f "\032"
 
-    # construct module file name
-    set module_filename "$project_module_name-$vsn.tm"
-    return $module_filename
-}
+    # compress and place loader script
+    set loader [zlib compress $script 9]
+    set len    [string length $loader]
+    chan puts -nonewline $f "$len\n"
+    chan puts -nonewline $f $loader
 
-proc util::find_lib {} {
-    # find library artifact
-    global build_dir
-    global build_type
-    global build_libname_file
+    # each compressed chunk is followed by a newline, just to make the
+    # file a bit easier to look at in emacs
+    chan puts $f "\n"
 
-    # read name of generated library (output by cmake)
-    set libname [read_file $build_dir/$build_libname_file]
+    # process the manifest
+    dict for {type value_list} $md {
+        foreach v $value_list {
+            switch -- $type {
+                .load {
+                    foreach {k v} [split1 = $v] {
+                        # .load name=dir1, dir2, ...
+                        # Looks in each directory for name.[info
+                        # sharedlibextension], or libname.extension
+                        set pkg_name $k
+                        set lib_dirs [split $v ,]
+                        set lib_dirs [lmap x $lib_dirs {string trim $x}]
+                        set filename [find_lib $pkg_name $lib_dirs]
+                        if {$filename eq ""} {
+                            puts "ERROR: could not find $pkg_name library in $lib_dirs"
+                            exit 1;
+                        }
+                    }
+                    set header {$type $pkg_name=$len\n} ;# subst happens later
+                }
+                .source {
+                    set header {$type $len\n}           ;# subst happens later
+                    set filename $v
+                }
+                .vsn {
+                    foreach {pkg vsn} [split1 = $v] {
+                        chan puts -nonewline $f ".vsn $pkg=$vsn\n"
+                    }
+                    continue
+                }
+                .asset {
+                    set filename $v
+                    set header {$type $v=$len\n}        ;# subst happens later
+                }
 
-    set path $build_dir/$libname
-    verbose "find_lib: Checking $path"
-    if {[file exists $path]} {
-        return $path
-    } else {
-        set path $build_dir/$build_type/$libname
-        verbose "find_lib: Checking $path"
-        if {[file exists $path]} {
-            return $path
-        } else {
-            puts "ERROR: Could not find library artifact."
-            exit 1
+                .out     -
+                .install {continue}
+
+                default {
+                    set c [string index $type 0]
+                    if {$c eq "."} {
+                        puts "ERROR: unrecognized manifest entry: $type"
+                        exit 1
+                    } elseif {$c eq "#"} {
+                        continue
+                    }
+                    set header {$type $len\n}           ;# subst happens later
+                    set filename $v
+                }}
+
+            verbose "Writing $filename..."
+            set infile [open $filename rb]
+            set indata [read $infile]
+            close $infile
+            set zdata [zlib compress $indata 9]
+            set len   [string length $zdata]
+            set header [subst $header]
+            chan puts -nonewline $f $header
+            chan puts -nonewline $f $zdata
+            chan puts -nonewline $f "\n"
         }
     }
-}
 
-proc util::create_module {} {
-    # After successful cmake build, create the tcl module file.
-    # If zipfs is available,
-    global build_dir
-    global build_libname_file
-    global build_version_file
-    global build_version_var
-    global project_module_root
-    global project_module_name
-    global project_package
+    close $f
+    puts "Wrote $target."
 
-    # read version (output by cmake)
-    set vsn [util::get_define $build_dir/$build_version_file $build_version_var]
+    # Include a Windows batch file
+    if {[util::is_windows]} {
+        set module_file [file tail $target]
+        set bat_file [subst -nocommands {
+            ::if no {
+            @tclsh "%~f0" %*
+            @goto :eof
+            }
+            # This Windows batch file simply executes act
+            # Do not change anything above this comment.
 
-    # construct module file name
-    set module_filename [module_filename]
+            source $module_file
+            # end tcl }]
+        append bat_file $backslash
+        append bat_file "\n:eof"
 
-    # create parent directory
-    if {![file exists $build_dir/$project_module_root]} {
-        file mkdir $build_dir/$project_module_root
-    }
-
-    # create module file
-    set lib_path [find_lib]
-    set module_path $build_dir/$project_module_root/$module_filename
-    if {[file exists $module_path]} {file delete $module_path}
-
-    # If zipfs is available, make a zip archive. If not, make a loader
-    # which only loads a single binary.
-    if {[catch {zipfs root}]} {
-        util::make_module $lib_path $module_path
-    } else {
-        util::make_zip_module $build_dir/$project_package $module_path
+        set bat_path [file join [file dirname $target] "${module_file}.bat"]
+        set f [open $bat_path w]
+        puts $f $bat_file
+        close $f
+        puts "Wrote $bat_path."
     }
 }
 
 proc util::exec_tail {args} {
-    # On platforms with `kill`, we can print the output produced by a
-    # process while it's running. Uses globals and vwait, so only one
-    # at a time.
-    if {[util::is_windows]} {
-        exec {*}$args
-    } else {
-        set ::done 0
-        set ::tmp [file tempfile ::tmp_name]
-        set ::pid [exec {*}$args 2>@ $::tmp &]
+    # Uses globals and vwait, so only one at a time.
 
-        chan event $::tmp readable {
-            set l [chan gets $::tmp]
-            if {![chan eof $::tmp]} {
-                puts $l
-            }
-            if {[catch {exec -- kill -0 $::pid}]} {
-                set ::done 1
-            }
+    set ::done 0
+    set ::tmp [open "| $args 2>@1"]
+    chan configure $::tmp -blocking 0 -buffering none
+    chan event $::tmp readable {
+        set l [chan read $::tmp]
+        if {![chan eof $::tmp]} {
+            puts -nonewline $l
+            flush stdout
+        } else {
+            set ::done 1
         }
-        vwait ::done
-        chan close $::tmp
-        file delete $::tmp_name
-        unset ::done
-        unset ::tmp
-        unset ::tmp_name
     }
+    vwait ::done
+    chan close $::tmp
+    unset ::done
+    unset ::tmp
 }
 
 # ----------------------------------------------------------------------------
 
-namespace eval vcpkg {
-    # vcpkg directory location cannot be changed, because this would
-    # require changing CMAKE_TOOLCHAIN_FILE, which isn't worth the
-    # trouble for something designed to be turnkey.
-    variable vcpkg_dir [file normalize [file join [pwd] .. vcpkg]]
-}
+namespace eval vcpkg {}
 
 proc vcpkg::clone {} {
-    variable vcpkg_dir
     util::exit_unless_git
 
     if {$::opts(dry_run)} {
-        puts "git clone $::opts(vcpkg_repo) $vcpkg_dir"
+        puts "git clone $::opts(vcpkg_repo) $::opts(vcpkg_dir)"
     } else {
-        puts "Cloning vcpkg into $vcpkg_dir..."
-        set res [util::exec_tail -ignorestderr git clone $::opts(vcpkg_repo) $vcpkg_dir]
+        if {[file exists $::opts(vcpkg_dir)]} {
+            puts "ERROR: Directory $::opts(vcpkg_dir) exists."
+            exit 1
+        }
+        puts "Cloning vcpkg into $::opts(vcpkg_dir)..."
+        set res [util::exec_tail git clone $::opts(vcpkg_repo) $::opts(vcpkg_dir)]
         puts $res
     }
 }
 
 proc vcpkg::bootstrap {} {
-    variable vcpkg_dir
     util::exit_unless_compiler
 
     if {[util::is_windows]} {
-        set bootstrap [file join $vcpkg_dir bootstrap-vcpkg.bat]
+        set bootstrap [file join $::opts(vcpkg_dir) bootstrap-vcpkg.bat]
     } else {
-        set bootstrap [file join $vcpkg_dir bootstrap-vcpkg.sh]
+        set bootstrap [file join $::opts(vcpkg_dir) bootstrap-vcpkg.sh]
     }
     if {$::opts(dry_run)} {
         puts $bootstrap
     } else {
         puts "Executing $bootstrap..."
-        puts "Compiling may take several minutes with no output until complete..."
-        set res [util::exec_tail -ignorestderr $bootstrap]
+        puts "Compiling may take several minutes."
+        set res [util::exec_tail $bootstrap]
         puts $res
     }
 }
@@ -388,25 +568,27 @@ proc vcpkg::setup {} {
 }
 
 proc vcpkg::update {} {
-    variable vcpkg_dir
     util::exit_unless_git
-    set cmd "[file join $vcpkg_dir vcpkg]"
+    if {[util::is_windows]} {
+        set cmd "[file join $::opts(vcpkg_dir) vcpkg.exe]"
+    } else {
+        set cmd "[file join $::opts(vcpkg_dir) vcpkg]"
+    }
 
     if {$::opts(dry_run)} {
-        puts "git -C $vcpkg_dir pull"
+        puts "git -C $::opts(vcpkg_dir) pull"
         puts "$cmd update"
     } else {
-        puts "Performing git pull on $vcpkg_dir"
-        set res [util::exec_tail git -C $vcpkg_dir pull]
+        puts "Performing git pull on $::opts(vcpkg_dir)"
+        set res [util::exec_tail git -C $::opts(vcpkg_dir) pull]
         puts $res
         puts "Performing vcpkg update"
-        set res [util::exec_tail -ignorestderr $cmd update]
+        set res [util::exec_tail $cmd update]
         puts $res
     }
 }
 
 proc vcpkg::install {} {
-    variable vcpkg_dir
     if {![file exists $::opts(packages)]} {
         puts "ERROR: $::opts(packages) does not exist."
         exit 1
@@ -415,25 +597,23 @@ proc vcpkg::install {} {
     set packages [util::read_lines $::opts(packages)]
     ::verbose "Found in $::opts(packages): $packages"
 
-    set cmd "[file join $vcpkg_dir vcpkg]"
+    if {[util::is_windows]} {
+        set cmd "[file join $::opts(vcpkg_dir) vcpkg.exe]"
+    } else {
+        set cmd "[file join $::opts(vcpkg_dir) vcpkg]"
+    }
+
     if {$::opts(dry_run)} {
         puts "$cmd install $packages"
     } else {
-        puts "Installing packages from $::opts(packages)"
-        puts "Compiling may take a long time with no output until complete..."
-        puts "Consider executing this command manually instead:"
-        puts "    $cmd install $packages"
-        puts ""
-        puts "Fetching and compiling..."
-        set res [util::exec_tail -ignorestderr $cmd install {*}$packages]
+        puts "Installing packages from $::opts(packages)..."
+        set res [util::exec_tail $cmd install {*}$packages]
         puts $res
     }
 }
 
 proc vcpkg::main {words} {
     switch [lindex $words 1] {
-        "bootstrap" {bootstrap}
-        "clone"     {clone}
         "install"   {install}
         "setup"     {setup}
         "update"    {update}
@@ -447,13 +627,21 @@ namespace eval cmake {}
 
 proc cmake::strip {} {
     global build_dir
-
+    if {[util::is_windows]} return
     foreach f [glob -nocomplain -directory $build_dir *[info sharedlibextension]] {
-        exec -- strip $f
+        if {$::opts(dry_run)} {
+            puts "strip $f"
+        } else {
+            exec -- strip $f
+        }
     }
 
     foreach f [glob -nocomplain -directory $build_dir **/*[info sharedlibextension]] {
-        exec -- strip $f
+        if {$::opts(dry_run)} {
+            puts "strip $f"
+        } else {
+            exec -- strip $f
+        }
     }
 }
 
@@ -462,47 +650,43 @@ proc cmake::clean {} {
     file delete -force $build_dir
 }
 
-proc cmake::build {} {
+proc cmake::build {manifest} {
     global build_dir
     global build_type
 
-    util::exec_tail -- cmake -S . -B $build_dir -DCMAKE_BUILD_TYPE=$build_type
-    util::exec_tail -- cmake --build $build_dir --config $build_type
-    strip
+    if {$manifest eq ""} {
+        puts "ERROR: no manifest file specified."
+        exit 1
+    }
 
-    # create Tcl module from built library
-    util::create_module
+    if {[file exists [file join [pwd] CMakeLists.txt]]} {
+        # Skip cmake build if no CMakeLists.txt file is found in root.
+        if {$::opts(dry_run)} {
+            puts "cmake -S . -B $build_dir -DCMAKE_BUILD_TYPE=$build_type"
+            puts "cmake --build $build_dir --config $build_type"
+            strip
+        } else {
+            util::exec_tail cmake -S . -B $build_dir -DCMAKE_BUILD_TYPE=$build_type
+            util::exec_tail cmake --build $build_dir --config $build_type
+            strip
+        }
+    }
+
+    # create Tcl module
+    util::make_bundle $manifest
 }
 
 proc cmake::main {words} {
     switch [lindex $words 1] {
         "clean"    {clean}
-        "build"    {build}
+        "build"    {build [lindex $words 2]}
         default    {usage; exit 1}
     }
 }
 
 # ----------------------------------------------------------------------------
 
-namespace eval system {
-    global build_dir
-    global project_module_root
-    global project_package
-
-    variable target_dir        [file normalize $build_dir/$project_package]
-    variable target_module_dir [file normalize $build_dir/$project_module_root]
-}
-
-proc system::writable_lib {} {
-    set scriptdir ""
-    foreach dir $::auto_path {
-        if {[file writable $dir]} {
-            set scriptdir $dir
-            break
-        }
-    }
-    return $scriptdir
-}
+namespace eval system {}
 
 proc system::writable_module {} {
     set scriptdir ""
@@ -515,101 +699,75 @@ proc system::writable_module {} {
     return $scriptdir
 }
 
-proc system::tinstall {pathname} {
-    if {[file isdirectory $pathname] == 0} {
-        puts "ERROR: $pathname must be a directory."
+proc system::install {manifest} {
+    if {$manifest eq ""} {usage; exit 1}
+
+    set md [util::read_manifest $manifest]
+    if {![dict exists $md .install]} {
+        puts "ERROR: No .install in manifest $manifest."
+        exit 1
+    }
+    set dir [dict get $md .install]
+
+    if {![dict exists $md .out]} {
+        puts "ERROR: No .out in manifest $manifest."
+        exit 1
+    }
+    set artifact [dict get $md .out]
+
+    if {![file exists $artifact]} {
+        puts "ERROR: No build artifact found at $artifact. Did you forget to build?"
         exit 1
     }
 
-    set scriptdir [writable_lib]
-
-    if {$scriptdir eq ""} {
-        puts "Could not write to any path in auto_path: $::auto_path"
-        exit 1
-    }
-
-    set path_tail [file tail $pathname]
-    if {$path_tail ne "" && [file exists $scriptdir/$path_tail]} {
-        file delete -force $scriptdir/$path_tail
-    }
-    puts "Copying $pathname to $scriptdir/$path_tail"
-    file copy -force $pathname $scriptdir
-}
-
-proc system::tinstall_module {pathname} {
-    if {[file isdirectory $pathname] == 0} {
-        puts "ERROR: $pathname must be a directory."
-        exit 1
-    }
-
-    set scriptdir [writable_module]
-
-    if {$scriptdir eq ""} {
+    set install [writable_module]
+    if {$install eq ""} {
         puts "Could not write to any path in ::tcl::tm::path list: [::tcl::tm::path list]"
         exit 1
     }
 
-    set path_tail [file tail $pathname]
-    if {$path_tail ne "" && [file exists $scriptdir/$path_tail]} {
-        file delete -force $scriptdir/$path_tail
-    }
-    puts "Copying $pathname to $scriptdir/$path_tail"
-    file copy -force $pathname $scriptdir
-}
-
-proc system::install_package {} {
-    variable target_dir
-    if {![file exists $target_dir]} {
-        puts "ERROR: Could not find package. "
-        puts "Consider first running $::argv0 cmake build"
-        exit 1
+    set destdir [file normalize [file join $install $dir]]
+    if {!$::opts(dry_run)} {
+        file mkdir $destdir
     }
 
-    tinstall $target_dir
-}
-
-proc system::install_module {} {
-    variable target_module_dir
-    if {![file exists $target_module_dir]} {
-        puts "ERROR: Could not find module. "
-        puts "Consider first running $::argv0 cmake build"
-        exit 1
+    set outfile [file join $destdir [file tail $artifact]]
+    if {[file exists $outfile]} {
+        if {!$::opts(dry_run)} {
+            file delete $outfile
+        }
     }
-
-    tinstall_module $target_module_dir
+    puts "Copying $artifact to $outfile"
+    if {!$::opts(dry_run)} {
+        file copy $artifact $outfile
+    }
 }
-
 
 proc system::main {words} {
     switch [lindex $words 1] {
-        install  {switch [lindex $words 2] {
-            package {install_package}
-            module  {install_module}
-            default {usage; exit 1}
-        }}
-
-        dir {switch [lindex $words 2] {
-            package {puts [writable_lib]}
-            module  {puts [writable_module]}
-            default {usage; exit 1}
-        }}
-
+        dir      {puts [writable_module]}
         default  {usage; exit 1}
     }
 }
 
-namespace eval misc {}
+# ----------------------------------------------------------------------------
 
-proc misc::init {} {
-    set project_file [file join [pwd] project.tcl]
-    if {[file exists $project_file]} {
-        puts "$project_file already exists."
-        exit 1
+# Set Env VCPKG_ROOT to match vcpkg_dir, so CMakeLists.txt can find it
+set ::env(VCPKG_ROOT) $::opts(vcpkg_dir)
+
+# Set --triplet option VCPKG_DEFAULT_TRIPLET
+if {$::opts(triplet) ne ""} {
+    set ::env(VCPKG_DEFAULT_TRIPLET) "$::opts(triplet)"
+}
+
+# On Windows, we generally want to link our dependencies statically, because
+# it's too hard to make sure they're found in the Windows search path. If the
+# --triplet option isn't set, we'll set it here to tell VCPKG we want to
+# static libraries
+if {[util::is_windows]} {
+    if {$::opts(triplet) eq ""} {
+        set ::env(VCPKG_DEFAULT_TRIPLET) x64-windows-static
     }
-    set f [open $project_file w]
-    puts $f {set project_module_root   myroot}
-    puts $f {set project_module_name   myname}
-    puts $f {set project_package       myroot_myname}
 }
 
 # require git
@@ -624,8 +782,9 @@ verbose "Options:"; if {$::opts(verbose)} {parray opts}
 
 if {[llength $commands] > 0} {
     switch [lindex $commands 0] {
-        "cmake"  {cmake::main $commands}
-        "init"   {misc::init}
+        build    {cmake::build [lindex $commands 1]}
+        clean    {cmake::clean}
+        install  {system::install [lindex $commands 1]}
         "system" {system::main $commands}
         "vcpkg"  {vcpkg::main $commands}
         default {usage; exit 1}

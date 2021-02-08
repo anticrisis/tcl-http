@@ -33,11 +33,11 @@ test get_hello {Sanity check: hello world} -body {
     background $port {
         $load_http
         namespace import ::act::*
-        http configure -get {list 200 "hello, world" "text/plain"} \
+        act::http configure -get {list 200 "hello, world" "text/plain"} \
             {*}$test_server -port $port
-        http run
+        act::http run
         }
-    set res [http client {*}$test_addr -port $port -method get -target /]
+    set res [act::http client {*}$test_addr -port $port -method get -target /]
     kill $port
     without_headers $res
 } -result {200 {hello, world}}
@@ -62,13 +62,13 @@ proc check_target_body_headers {method} {
             success
         }
     }
-    http configure -$method [namespace code handle] \
+    act::http configure -$method [namespace code handle] \
         -reqtargetvariable [namespace current]::target \
         -reqbodyvariable [namespace current]::body \
         -reqheadersvariable [namespace current]::headers \
         {*}$test_server -port $port
-    http configure
-    http run
+    act::http configure
+    act::http run
     }}
 }
 
@@ -88,12 +88,12 @@ proc check_target_headers {method} {
             success
         }
     }
-    http configure -$method [namespace code handle] \
+    act::http configure -$method [namespace code handle] \
         -reqtargetvariable [namespace current]::target \
         -reqheadersvariable [namespace current]::headers \
         {*}$test_server -port $port
-    http configure
-    http run
+    act::http configure
+    act::http run
     }}
 }
 
@@ -105,10 +105,10 @@ proc set_resp_headers {method} {
     proc handle {} {
         list 200 "ok" "text/plain" {X-Head-1 val1 X-Head-2 val2}
     }
-    http configure -$method [namespace code handle] \
+    act::http configure -$method [namespace code handle] \
         {*}$test_server -port $port
-    http configure
-    http run
+    act::http configure
+    act::http run
     }}
 }
 
@@ -120,7 +120,7 @@ test options_all {OPTIONS: test variables} -body {
     set fail {proc fail {args} {list 500 "" ""}\n}
     set success {proc success {} {list 200 "" ""}\n}
     background $port [string cat $fail $success [check_target_body_headers $method]]
-    set res [http client {*}$test_addr -port $port -method $method \
+    set res [act::http client {*}$test_addr -port $port -method $method \
         -target "/"                                                \
         -body {big body}                                           \
         -headers {X-Head tail}]
@@ -134,7 +134,7 @@ test get_all {GET: test variables} -body {
     set fail {proc fail {args} {list 500 \$args ""}\n}
     set success {proc success {} {list 200 "" ""}\n}
     background $port [string cat $fail $success [check_target_headers $method]]
-    set res [http client {*}$test_addr -port $port -method $method \
+    set res [act::http client {*}$test_addr -port $port -method $method \
         -target "/"                                                \
         -headers {X-Head tail}]
     kill $port
@@ -147,7 +147,7 @@ test delete_all {DELETE: test variables} -body {
     set fail {proc fail {args} {list 500 "" ""}\n}
     set success {proc success {} {list 204 "" ""}\n}
     background $port [string cat $fail $success [check_target_body_headers $method]]
-    set res [http client {*}$test_addr -port $port -method $method \
+    set res [act::http client {*}$test_addr -port $port -method $method \
         -target "/"                                                \
         -body {big body}                                           \
         -headers {X-Head tail}]
@@ -161,7 +161,7 @@ test post_all {POST: test all} -body {
     set fail {proc fail {args} {list 500 \$args ""}\n}
     set success {proc success {} {list 200 "" ""}\n}
     background $port [string cat $fail $success [check_target_body_headers $method]]
-    set res [http client {*}$test_addr -port $port -method $method \
+    set res [act::http client {*}$test_addr -port $port -method $method \
         -target "/"                                                \
         -body {big body}                                           \
         -headers {X-Head tail}]
@@ -175,7 +175,7 @@ test put_all {POST: test all} -body {
     set fail {proc fail {args} {list 500 \$args ""}\n}
     set success {proc success {} {list 200 "" ""}\n}
     background $port [string cat $fail $success [check_target_body_headers $method]]
-    set res [http client {*}$test_addr -port $port -method $method \
+    set res [act::http client {*}$test_addr -port $port -method $method \
         -target "/"                                                \
         -body {big body}                                           \
         -headers {X-Head tail}]
@@ -187,7 +187,7 @@ test set_response_headers {test response headers} -body {
     set method get
     set port [rand_port]
     background $port [set_resp_headers $method]
-    set res [http client {*}$test_addr -port $port -method $method \
+    set res [act::http client {*}$test_addr -port $port -method $method \
         -target "/"]
     kill $port
     return "[dict get [lindex $res 1] X-Head-1] [dict get [lindex $res 1] X-Head-2]"

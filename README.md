@@ -17,12 +17,24 @@ Bonus:
 
 ```tcl
 % package require act::http
-% namespace import act::*
-% http configure -host 127.0.0.1 -port 1234 -get {list 200 "hello, world" "text/plain"}
-% http run
+% act::http configure -host 127.0.0.1 -port 1234 -get {list 200 "hello, world" "text/plain"}
+% act::http run
 ```
 
 This is a pure C shared library extension, with no Tcl code.
+
+### Example: Single-file bundle built with act
+
+`act` is a single-file build tool available at https://github.com/anticrisis/tcl-act.
+
+```sh
+$ ./act clean
+$ ./act build examples/manifests/hello_world.txt
+...
+$ sh build/hello-world-0.1.tm -host 127.0.0.1 -port 1234
+```
+
+On Windows, `cd` into the `build` directory and `.\hello-world-0.1.tm.bat -host 127.0.0.1 -port 1234`
 
 ## Configuration
 
@@ -61,17 +73,8 @@ example,
 $ sudo apt install cmake build-essential
 ```
 
-After `git clone`, these four commands will build and install this extension.
-Their meaning and function are described below.
-
-```sh
-$ ./act vcpkg setup
-$ ./act vcpkg install
-$ ./act cmake build
-$ ./act system install module
-or
-$ ./act system install package
-```
+Then install `vcpkg` in a nearby parent directory. You may need to use
+the `--vcpkg` option to `act`.
 
 ### Tcl
 
@@ -88,12 +91,9 @@ $ sudo apt install tcl8.6-dev
 Alternatively, you can build Tcl from source yourself to generate the stubs
 library.
 
-IMPORTANT: this extension's cmake-based build system relies on being able to
-find `tcl.h` and the `tclstub` library on your path, or in certain typical
-places. See the `find_path` and `find_library` lines in `CMakeLists.txt` for
-details.
-
 ### Tcl tips
+
+NOTE: These tips are not required to build the examples.
 
 I place extensions and packages into my `~/.tcl` directory, and use an init file
 to configure the paths. That init file is sourced by the `act` script so that
@@ -127,21 +127,6 @@ source ~/.tcl/init.tcl
 If I was dealing with Tcl-version-specific modules and packages, I would adjust
 `init.tcl` accordingly, to select the appropriate paths based on the running tclsh
 version.
-
-#### During Development
-
-In order to load the extension from your build directory rather than your
-system's install location, you may need to set the TCL_8_6_TM_PATH, like this:
-
-```sh
-$ export TCL_8_6_TM_PATH='build'
-```
-
-or 
-
-```powershell
-PS> $Env:TCL_8_6_TM_PATH='build'
-```
 
 ### C++
 
@@ -203,10 +188,8 @@ installed anywhere else on your system.
 Once `vcpkg` is set up, building and installing is as easy as:
 
 ```sh
-$ ./act cmake build
-$ ./act system install module
-or
-$ ./act system install package
+$ ./act build manifest.txt
+$ ./act install manifest.txt
 ```
 
 
@@ -217,7 +200,8 @@ Test if you've successfully installed the package on your TCLLIBPATH:
 ```tcl
 % package require act::http
 0.1
-%
+% act::http configure
+-host {} -port {} -head {} -get {} -post {} -put {} -delete {} -options {} -reqtargetvariable {} -reqbodyvariable {} -reqheadersvariable {} -exittarget {} -maxconnections {}
 ```
 
 ## Tests
@@ -250,9 +234,8 @@ minimal overhead added to a realistic workload by the http server itself.
 
 ```tcl
 % package require act::http
-% namespace import act::*
-% http configure -host 127.0.0.1 -port 8080 -get {list 200 "hello, world" "text/plain"}
-% http run
+% act::http configure -host 127.0.0.1 -port 8080 -get {list 200 "hello, world" "text/plain"}
+% act::http run
 ```
 
 Result:

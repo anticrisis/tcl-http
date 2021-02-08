@@ -3,8 +3,7 @@
 # It does not actually provide a working user database.
 #
 package require sqlite3
-package require act_http
-namespace import act::*
+package require act::http
 
 if {$argc < 2} {
     puts "Usage: $argv0 -host host -port port"
@@ -97,7 +96,7 @@ proc web::handle_get {} {
     }
 }
 
-http configure -get web::handle_get -reqtargetvar web::target {*}$argv
+act::http configure -get web::handle_get -reqtargetvar web::target {*}$argv
 
-puts "Listening on http://[http configure -host]:[http configure -port]"
-http run
+puts "Listening on http://[act::http configure -host]:[act::http configure -port]"
+act::http run

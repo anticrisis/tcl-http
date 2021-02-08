@@ -1,0 +1,3 @@
+.out        build/userdb-0.1.tm
+.load       act_http = build/, build/Release
+.source     examples/userdb.tcl

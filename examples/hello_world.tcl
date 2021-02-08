@@ -6,23 +6,16 @@
 # $ tclsh hello_world.tcl -host 127.0.0.1 -port 8080
 #
 
-#
-# source user's init script, if present, to pick up user-defined module and
-# package paths
-#
-if {[file exists ~/.tcl/init.tcl]} {source ~/.tcl/init.tcl}
-
 package require act::http
-namespace import act::*
 
-http configure -get {list 200 "hello world" "text/plain"}
-http configure {*}$argv
+act::http configure -get {list 200 "hello world" "text/plain"}
+act::http configure {*}$argv
 
 #
 # Query individual config options:
 #
-puts "Host: [http configure -host]"
-puts "Port: [http configure -port]"
+puts "Host: [act::http configure -host]"
+puts "Port: [act::http configure -port]"
 
 #
 # Query all options:
@@ -33,5 +26,4 @@ puts "Port: [http configure -port]"
 puts ""
 puts "Starting server... Press Ctrl-C to exit."
 
-http run 
-
+act::http run

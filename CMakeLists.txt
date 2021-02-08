@@ -1,13 +1,12 @@
 cmake_minimum_required(VERSION 3.16)
 
-# By default, add the VCPKG toolchain file found.
-if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
-# Look in parent directory and then parent of parent
-if(EXISTS ${CMAKE_SOURCE_DIR}/../vcpkg/scripts/buildsystems/vcpkg.cmake)
-    set(CMAKE_TOOLCHAIN_FILE ${CMAKE_SOURCE_DIR}/../vcpkg/scripts/buildsystems/vcpkg.cmake)
-elseif(EXISTS ${CMAKE_SOURCE_DIR}/../../vcpkg/scripts/buildsystems/vcpkg.cmake)
-    set(CMAKE_TOOLCHAIN_FILE ${CMAKE_SOURCE_DIR}/../../vcpkg/scripts/buildsystems/vcpkg.cmake)
+if(DEFINED ENV{VCPKG_DEFAULT_TRIPLET} AND NOT DEFINED VCPKG_TARGET_TRIPLET)
+  set(VCPKG_TARGET_TRIPLET "$ENV{VCPKG_DEFAULT_TRIPLET}" CACHE STRING "")
 endif()
+
+if(DEFINED ENV{VCPKG_ROOT} AND NOT DEFINED CMAKE_TOOLCHAIN_FILE)
+  set(CMAKE_TOOLCHAIN_FILE "$ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+      CACHE STRING "")
 endif()
 
 project(tcl_http
@@ -35,6 +34,9 @@ set_target_properties(http_tcl PROPERTIES
 configure_file(src/version.h.in version.h)
 file(GENERATE OUTPUT libname.txt CONTENT $<TARGET_FILE_NAME:http_tcl>)
 
+# CMake knows how to find TCL
+find_package(TCL)
+find_package(TclStub)
 add_compile_definitions(USE_TCL_STUBS)
 find_package(Boost 1.75.0 REQUIRED)
 
@@ -48,17 +50,11 @@ find_path(TCL_INCLUDE_DIR tcl.h REQUIRED
     ${CMAKE_SOURCE_DIR}/../tcl86/generic
     ${CMAKE_SOURCE_DIR}/../tcl87/generic
     /usr/local/tcl86/include /usr/local/tcl87/include)
-find_library(TCL_LIBRARY REQUIRED NAMES tcl86 tcl86t libtcl8.6.so libtcl8.7.so
-    HINTS ${TCL_INCLUDE_DIR}/../unix ${TCL_INCLUDE_DIR}/../win ${TCL_INCLUDE_DIR}/../macosx
-    /usr/local/tcl86/lib /usr/local/tcl87/lib)
-find_library(TCL_STUB_LIBRARY REQUIRED NAMES tclstub86 tclstub87 libtclstub8.6.a libtclstub8.7.a
-    HINTS ${TCL_INCLUDE_DIR}/../unix ${TCL_INCLUDE_DIR}/../win ${TCL_INCLUDE_DIR/../macosx}
-    /usr/local/tcl86/lib /usr/local/tcl87/lib)
 
 target_include_directories(http_tcl
   PRIVATE
   "${CMAKE_CURRENT_BINARY_DIR}"
-  "${TCL_INCLUDE_DIR}"
+  "${TCL_INCLUDE_PATH}"
   "${CMAKE_SOURCE_DIR}/include"
   ${Boost_INCLUDE_DIRS})
 
