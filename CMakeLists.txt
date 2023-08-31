@@ -49,7 +49,10 @@ find_path(TCL_INCLUDE_DIR tcl.h REQUIRED
     ${CMAKE_SOURCE_DIR}/../tcl/generic
     ${CMAKE_SOURCE_DIR}/../tcl86/generic
     ${CMAKE_SOURCE_DIR}/../tcl87/generic
-    /usr/local/tcl86/include /usr/local/tcl87/include)
+    /usr/local/tcl86/include
+    /usr/local/tcl87/include
+    /usr/include/tcl8.6
+    /usr/include/tcl8.7)
 
 target_include_directories(http_tcl
   PRIVATE
